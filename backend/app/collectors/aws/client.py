@@ -63,9 +63,13 @@ async def assume_role_for_scope(external_scope_id: str, region: str) -> ScopedCr
 
 def get_async_session(creds: ScopedCredentials | None, region: str) -> aioboto3.Session:
     if creds is None:
-        # Delegated mode: default credential chain (AWS_PROFILE / SSO
-        # cache / instance profile), same as running the AWS CLI directly.
-        return aioboto3.Session(region_name=region)
+        # Delegated mode: default credential chain (SSO cache / instance
+        # profile), same as running the AWS CLI directly. settings.aws_profile
+        # is passed explicitly rather than relying on an AWS_PROFILE
+        # environment variable, since pydantic-settings loading our .env
+        # doesn't export values into the real OS environment for boto3
+        # to see.
+        return aioboto3.Session(profile_name=settings.aws_profile, region_name=region)
 
     return aioboto3.Session(
         aws_access_key_id=creds.access_key,

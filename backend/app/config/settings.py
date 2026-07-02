@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     # so local dev without either keeps working unchanged.
     cloud_auth_mode: str = "app_only"
 
+    # Named profile for delegated AWS auth (e.g. one set up via
+    # `aws sso login --sso-session ...`). boto3/aioboto3 only pick up
+    # AWS_PROFILE from the real OS environment, not from this app's .env
+    # file (pydantic-settings doesn't export values into os.environ) - so
+    # this is passed explicitly to aioboto3.Session(profile_name=...)
+    # instead of relying on ambient environment propagation.
+    aws_profile: str | None = None
+
     aws_audit_role_name: str = "NavixaAuditRole"
     aws_audit_external_id: str | None = None
 
