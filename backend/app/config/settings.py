@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     aws_bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     aws_default_region: str = "us-east-1"
 
+    # NAVIXA Reports (Section 17) - local filesystem for dev; swap for
+    # object storage (S3/Blob/GCS) in production via this same setting.
+    reports_dir: str = "generated_reports"
+
 
 @lru_cache
 def get_settings() -> Settings:

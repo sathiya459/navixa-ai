@@ -27,6 +27,9 @@ data/
 postgres_data/
 neo4j_data/
 
+# NAVIXA Reports output (Section 17) - generated files, not source
+backend/generated_reports/
+
 # IDE
 .vscode/
 .idea/
