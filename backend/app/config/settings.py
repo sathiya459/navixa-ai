@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     # object storage (S3/Blob/GCS) in production via this same setting.
     reports_dir: str = "generated_reports"
 
+    # Entra ID SSO/OIDC (Section 6, Phase 5). MFA is enforced at the IdP via
+    # Entra Conditional Access policies, not application code - there is no
+    # in-app MFA step to implement. Unset means local JWT auth stays the
+    # only login path (dev default per Section 6).
+    entra_tenant_id: str | None = None
+    entra_client_id: str | None = None
+    entra_client_secret: str | None = None
+    entra_redirect_uri: str = "http://localhost:8000/api/v1/auth/sso/entra/callback"
+
 
 @lru_cache
 def get_settings() -> Settings:
