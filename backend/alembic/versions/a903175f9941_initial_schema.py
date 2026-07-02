@@ -126,7 +126,7 @@ def upgrade() -> None:
     op.create_table('resource_collection_status',
     sa.Column('audit_job_scope_id', sa.UUID(), nullable=False),
     sa.Column('resource_type', sa.String(length=50), nullable=False),
-    sa.Column('status', sa.Enum('success', 'partial', 'failed', name='resource_collection_status'), nullable=False),
+    sa.Column('status', sa.Enum('success', 'partial', 'failed', name='resource_collection_status_type'), nullable=False),
     sa.Column('error_detail', sa.String(), nullable=True),
     sa.Column('items_collected', sa.Integer(), nullable=False),
     sa.Column('duration_ms', sa.Integer(), nullable=True),

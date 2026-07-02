@@ -57,6 +57,11 @@ def test_gcp_delegated_mode_uses_default_credentials(monkeypatch):
 def test_azure_falls_back_to_stub_when_unconfigured(monkeypatch):
     from app.collectors.azure import client
 
+    # Pin cloud_auth_mode explicitly: a developer's local .env (CLOUD_AUTH_MODE=
+    # delegated, per Section 8a's recommended dev default) would otherwise
+    # leak into this test via the shared settings singleton and short-circuit
+    # get_scoped_credential before it ever reaches the federation check below.
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "app_only")
     monkeypatch.setattr(client.settings, "azure_federation_tenant_id", None)
     assert is_azure_federation_configured() is False
 
@@ -69,6 +74,7 @@ def test_azure_uses_client_secret_credential_when_configured(monkeypatch):
 
     from app.collectors.azure import client
 
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "app_only")
     monkeypatch.setattr(client.settings, "azure_federation_tenant_id", "tenant-1")
     monkeypatch.setattr(client.settings, "azure_federation_client_id", "client-1")
     monkeypatch.setattr(client.settings, "azure_federation_client_secret", "secret-1")
@@ -83,6 +89,7 @@ def test_gcp_falls_back_to_stub_when_unconfigured(monkeypatch):
 
     from app.collectors.gcp import client
 
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "app_only")
     monkeypatch.setattr(client.settings, "gcp_audit_service_account", None)
     assert is_gcp_federation_configured() is False
 
@@ -95,6 +102,7 @@ def test_gcp_uses_impersonated_credentials_when_configured(monkeypatch):
 
     from app.collectors.gcp import client
 
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "app_only")
     monkeypatch.setattr(client.settings, "gcp_audit_service_account", "audit@project.iam.gserviceaccount.com")
     assert is_gcp_federation_configured() is True
 
