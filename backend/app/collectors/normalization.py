@@ -28,6 +28,13 @@ _ID_KEYS_BY_PROVIDER: dict[str, dict[str, str]] = {
         "security_group": "selfLink",
         "peering_connection": "name",
     },
+    "oci": {
+        "network": "id",
+        "subnet": "id",
+        "route_table": "id",
+        "security_group": "id",
+        "peering_connection": "id",
+    },
 }
 
 
@@ -82,5 +89,7 @@ def _extract_id_and_name(
                 break
     if name is None:
         name = raw.get("GroupName")
+    if name is None:
+        name = raw.get("display_name")
 
     return native_id, name
