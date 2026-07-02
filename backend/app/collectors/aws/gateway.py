@@ -4,7 +4,7 @@ import time
 import aioboto3
 
 from app.collectors.base import CollectionResult
-from app.collectors.retry import with_retry
+from app.collectors.retry import with_aws_retry
 
 
 async def collect_gateways(session: aioboto3.Session, semaphore) -> CollectionResult:
@@ -13,7 +13,7 @@ async def collect_gateways(session: aioboto3.Session, semaphore) -> CollectionRe
     async with semaphore:
         try:
             async with session.client("ec2") as ec2:
-                igws_response, nats_response = await with_retry(
+                igws_response, nats_response = await with_aws_retry(
                     lambda: _describe_gateways(ec2)
                 )
             items = [

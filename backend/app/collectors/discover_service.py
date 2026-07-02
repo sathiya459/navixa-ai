@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.collectors.aws.orchestrator import discover_aws_scope
+from app.collectors.azure.orchestrator import discover_azure_scope
 from app.collectors.base import CollectionResult
-from app.collectors.normalization import normalize_aws_results
+from app.collectors.normalization import normalize_results
 from app.models.audit_job import AuditJobScope, ResourceCollectionStatusRow
 from app.models.network_resource import NetworkResource
 
@@ -20,14 +21,28 @@ def _overall_status(results: list[CollectionResult]) -> str:
     return "failed"
 
 
+async def _discover_by_provider(
+    provider: str, external_scope_id: str, region: str
+) -> list[CollectionResult]:
+    if provider == "aws":
+        return await discover_aws_scope(external_scope_id, region)
+    if provider == "azure":
+        return await discover_azure_scope(external_scope_id)
+    raise NotImplementedError(f"NAVIXA Discover does not yet support provider: {provider}")
+
+
 async def run_discovery_for_scope(
-    db: Session, audit_job_scope: AuditJobScope, external_scope_id: str, region: str
+    db: Session,
+    audit_job_scope: AuditJobScope,
+    provider: str,
+    external_scope_id: str,
+    region: str,
 ) -> None:
     audit_job_scope.status = "running"
     audit_job_scope.started_at = datetime.now(timezone.utc)
     db.commit()
 
-    results = await discover_aws_scope(external_scope_id, region)
+    results = await _discover_by_provider(provider, external_scope_id, region)
 
     for result in results:
         db.add(
@@ -41,7 +56,7 @@ async def run_discovery_for_scope(
             )
         )
 
-    normalized_rows = normalize_aws_results(results)
+    normalized_rows = normalize_results(results, provider)
     for row in normalized_rows:
         db.add(NetworkResource(audit_job_scope_id=audit_job_scope.id, **row))
 

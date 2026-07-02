@@ -6,11 +6,19 @@ under each provider's throttling thresholds.
 """
 
 AWS_RATE_LIMITS: dict[str, int] = {
-    "vpc": 10,
+    "network": 10,
     "subnet": 10,
     "route_table": 10,
     "security_group": 10,
     "gateway": 5,
+    "peering_connection": 10,
+}
+
+AZURE_RATE_LIMITS: dict[str, int] = {
+    "network": 10,
+    "subnet": 10,
+    "route_table": 10,
+    "security_group": 10,
     "peering_connection": 10,
 }
 

@@ -1,18 +1,20 @@
 import time
 
-import aioboto3
-
 from app.collectors.base import CollectionResult
-from app.collectors.retry import with_aws_retry
+from app.collectors.retry import with_azure_retry
 
 
-async def collect_security_groups(session: aioboto3.Session, semaphore) -> CollectionResult:
+async def collect_network_security_groups(network_client, semaphore) -> CollectionResult:
     start = time.monotonic()
     async with semaphore:
         try:
-            async with session.client("ec2") as ec2:
-                response = await with_aws_retry(lambda: ec2.describe_security_groups())
-            items = response.get("SecurityGroups", [])
+            async def _list_all():
+                return [
+                    nsg async for nsg in network_client.network_security_groups.list_all()
+                ]
+
+            nsgs = await with_azure_retry(_list_all)
+            items = [nsg.as_dict() for nsg in nsgs]
             return CollectionResult(
                 resource_type="security_group",
                 status="success",

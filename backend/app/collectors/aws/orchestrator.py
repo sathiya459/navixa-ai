@@ -13,7 +13,7 @@ from app.collectors.aws.peering import collect_peering_connections
 from app.collectors.aws.route_table import collect_route_tables
 from app.collectors.aws.security_group import collect_security_groups
 from app.collectors.aws.subnet import collect_subnets
-from app.collectors.aws.vpc import collect_vpcs
+from app.collectors.aws.vpc import collect_vpcs as collect_networks
 from app.collectors.base import CollectionResult
 from app.config.rate_limits import AWS_RATE_LIMITS
 
@@ -29,7 +29,7 @@ async def discover_aws_scope(external_scope_id: str, region: str) -> list[Collec
     }
 
     tasks = [
-        collect_vpcs(session, semaphores["vpc"]),
+        collect_networks(session, semaphores["network"]),
         collect_subnets(session, semaphores["subnet"]),
         collect_route_tables(session, semaphores["route_table"]),
         collect_security_groups(session, semaphores["security_group"]),
