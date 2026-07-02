@@ -43,6 +43,7 @@ def _extract_id_and_name(resource_type: str, raw: dict[str, Any]) -> tuple[str, 
         "route_table": "RouteTableId",
         "security_group": "GroupId",
         "gateway": "InternetGatewayId",
+        "peering_connection": "VpcPeeringConnectionId",
     }
     native_id = raw.get(id_keys.get(resource_type, ""), raw.get("NatGatewayId", "unknown"))
 
