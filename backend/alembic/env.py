@@ -13,6 +13,7 @@ from app.models import cloud_tenant as _cloud_tenant  # noqa: F401
 from app.models import audit_job as _audit_job  # noqa: F401
 from app.models import network_resource as _network_resource  # noqa: F401
 from app.models import finding as _finding  # noqa: F401
+from app.models import ai_insight as _ai_insight  # noqa: F401
 
 config = context.config
 settings = get_settings()
