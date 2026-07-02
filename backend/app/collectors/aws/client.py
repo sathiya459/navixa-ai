@@ -1,9 +1,10 @@
-"""AWS credential broker and async session factory for NAVIXA Discover.
-
-Phase 1 uses a stubbed AssumeRole exchange so the collector pipeline can be
-built and tested end-to-end without a live AWS Org. Phase 5 (Section 8)
-replaces `assume_role_for_scope` with a real STS AssumeRole call via
-IAM Identity Center — no long-lived access keys are ever persisted.
+"""AWS credential broker and async session factory for NAVIXA Discover
+(Section 8): calls sts:AssumeRole against a per-account audit role, using
+whatever identity the platform itself runs as (IAM Identity Center
+permission set, instance profile, or CI/CD role) as the calling principal.
+No long-lived access keys are ever configured or persisted - only the
+short-lived credentials AssumeRole returns, held in memory for the
+duration of one discovery run.
 """
 
 import aioboto3
@@ -22,16 +23,28 @@ class ScopedCredentials:
 
 
 async def assume_role_for_scope(external_scope_id: str, region: str) -> ScopedCredentials:
-    """Stub: exchange federated identity for temporary, scoped AWS credentials.
-
-    Real implementation calls sts:AssumeRole against a per-account audit
-    role using the platform's IAM Identity Center federation, returning
-    short-lived credentials that are never written to disk or logs.
+    """Assumes `settings.aws_audit_role_name` in the target account
+    (`external_scope_id`). The calling identity must already be permitted
+    to assume that role - typically granted via an IAM Identity Center
+    permission set or a trust policy scoped to the platform's own role.
     """
+    role_arn = f"arn:aws:iam::{external_scope_id}:role/{settings.aws_audit_role_name}"
+    assume_role_kwargs = {
+        "RoleArn": role_arn,
+        "RoleSessionName": "navixa-discover",
+    }
+    if settings.aws_audit_external_id:
+        assume_role_kwargs["ExternalId"] = settings.aws_audit_external_id
+
+    session = aioboto3.Session()
+    async with session.client("sts", region_name=region) as sts:
+        response = await sts.assume_role(**assume_role_kwargs)
+
+    credentials = response["Credentials"]
     return ScopedCredentials(
-        access_key="stub-access-key",
-        secret_key="stub-secret-key",
-        session_token="stub-session-token",
+        access_key=credentials["AccessKeyId"],
+        secret_key=credentials["SecretAccessKey"],
+        session_token=credentials["SessionToken"],
         region=region,
     )
 
