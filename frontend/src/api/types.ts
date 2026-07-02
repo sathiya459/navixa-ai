@@ -1,6 +1,7 @@
 export type CloudProvider = "aws" | "azure" | "gcp" | "oci";
 export type ScopeType = "account" | "subscription" | "project" | "compartment";
 export type UserRole = "admin" | "auditor" | "viewer";
+export type CloudAuthMode = "delegated" | "app_only";
 
 export interface User {
   id: string;
@@ -23,6 +24,10 @@ export interface Tenant {
   external_tenant_id: string;
   sso_login_url: string | null;
   region_info: Record<string, unknown> | null;
+  auth_mode: CloudAuthMode;
+  app_registration_client_id: string | null;
+  app_registration_tenant_id: string | null;
+  app_registration_redirect_uri: string | null;
 }
 
 export interface Scope {

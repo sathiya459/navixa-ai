@@ -7,6 +7,7 @@ import { SsoCallbackPage } from "./pages/SsoCallbackPage";
 import { DashboardHomePage } from "./pages/DashboardHomePage";
 import { AuditWorkflowPage } from "./pages/AuditWorkflowPage";
 import { TopologyPage } from "./pages/TopologyPage";
+import { TenantsPage } from "./pages/TenantsPage";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route element={<RequireAuth />}>
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<DashboardHomePage />} />
+              <Route path="/tenants" element={<TenantsPage />} />
               <Route path="/audits/new" element={<AuditWorkflowPage />} />
               <Route path="/audits/:jobId/topology" element={<TopologyPage />} />
             </Route>

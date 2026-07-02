@@ -28,8 +28,17 @@ export function DashboardLayout() {
               Multi-Cloud Network Architecture Intelligence Platform
             </Typography>
           </Typography>
+          <Button color="inherit" onClick={() => navigate("/dashboard")}>
+            Dashboard
+          </Button>
+          <Button color="inherit" onClick={() => navigate("/tenants")}>
+            Tenants
+          </Button>
+          <Button color="inherit" onClick={() => navigate("/audits/new")}>
+            New Audit
+          </Button>
           {user && (
-            <Typography variant="body2" sx={{ mr: 2 }}>
+            <Typography variant="body2" sx={{ mx: 2 }}>
               {user.email} ({user.roles.join(", ")})
             </Typography>
           )}
