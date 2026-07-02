@@ -22,7 +22,11 @@ async def discover_azure_scope(external_scope_id: str) -> list[CollectionResult]
         for resource_type, limit in AZURE_RATE_LIMITS.items()
     }
 
-    async with network_client:
+    # Both the client and the credential itself hold an aiohttp session -
+    # closing only network_client (as before) leaked the credential's
+    # session, surfaced by aiohttp's "Unclosed client session" warning
+    # during a real discovery run.
+    async with network_client, credential:
         tasks = [
             collect_vnets(network_client, semaphores["network"]),
             collect_subnets(network_client, semaphores["subnet"]),
