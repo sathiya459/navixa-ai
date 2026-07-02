@@ -127,6 +127,50 @@ class Settings(BaseSettings):
     celery_worker_concurrency: int = 4
 
 
+# Fields that may hold real secrets, mapped to the name they're stored
+# under in a Secret Manager/Key Vault when secret_provider != "env". Only
+# fields actually present in the vault get overridden - a secret that
+# doesn't exist there yet just keeps its env/.env/default value, so this
+# stays forward-compatible as more secrets are migrated over time.
+_SECRET_FIELD_MAP: dict[str, str] = {
+    "jwt_secret_key": "navixa-jwt-secret-key",
+    "database_url": "navixa-database-url",
+    "neo4j_password": "navixa-neo4j-password",
+    "entra_client_secret": "navixa-entra-client-secret",
+    "anthropic_api_key": "navixa-anthropic-api-key",
+    "openai_api_key": "navixa-openai-api-key",
+    "azure_openai_api_key": "navixa-azure-openai-api-key",
+    "gemini_api_key": "navixa-gemini-api-key",
+    "azure_federation_client_secret": "navixa-azure-federation-client-secret",
+    "aws_audit_external_id": "navixa-aws-audit-external-id",
+}
+
+
+def _apply_secret_overrides(settings: Settings) -> None:
+    if settings.secret_provider == "env":
+        return
+
+    # Local import + direct provider construction (not get_secret_provider(),
+    # which calls get_settings() itself) - calling back into get_settings()
+    # from here, before this call has returned and been cached by
+    # @lru_cache, would recurse infinitely.
+    from app.config.secrets import SecretProviderError, build_secret_provider
+
+    provider = build_secret_provider(
+        settings.secret_provider,
+        azure_key_vault_url=settings.azure_key_vault_url,
+        aws_region=settings.aws_secrets_manager_region,
+    )
+
+    for field_name, secret_name in _SECRET_FIELD_MAP.items():
+        try:
+            setattr(settings, field_name, provider.get_secret(secret_name))
+        except SecretProviderError:
+            continue
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    _apply_secret_overrides(settings)
+    return settings

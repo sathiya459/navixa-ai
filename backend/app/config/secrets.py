@@ -1,20 +1,17 @@
 """Secret Manager abstraction (Section 7): "Use environment variables
 during development" / "Use Secret Managers / Key Vaults in production".
 
-This is a utility other modules can opt into for secrets that need
-runtime rotation or centralized audit (e.g. re-fetching a rotated API key
-without redeploying) - it does not replace pydantic-settings' env-var
-loading for static configuration, which remains the primary mechanism for
-values fixed at deploy time. Selection is driven by `settings.secret_provider`.
+Providers take their configuration via constructor arguments rather than
+reaching for a global `settings` object, specifically so get_settings()
+itself can call get_secret_provider() during startup (to override
+sensitive fields with values fetched from the vault) without a circular
+import / infinite-recursion risk - both modules would otherwise import
+each other's module-level `settings = get_settings()` before either
+finishes constructing.
 """
 
 import os
 from abc import ABC, abstractmethod
-from functools import lru_cache
-
-from app.config.settings import get_settings
-
-settings = get_settings()
 
 
 class SecretProviderError(RuntimeError):
@@ -41,11 +38,14 @@ class EnvSecretProvider(SecretProvider):
 
 
 class AWSSecretsManagerProvider(SecretProvider):
+    def __init__(self, region: str):
+        self._region = region
+
     def get_secret(self, name: str) -> str:
         import boto3
         from botocore.exceptions import ClientError
 
-        client = boto3.client("secretsmanager", region_name=settings.aws_secrets_manager_region)
+        client = boto3.client("secretsmanager", region_name=self._region)
         try:
             response = client.get_secret_value(SecretId=name)
         except ClientError as exc:
@@ -54,15 +54,18 @@ class AWSSecretsManagerProvider(SecretProvider):
 
 
 class AzureKeyVaultProvider(SecretProvider):
+    def __init__(self, vault_url: str | None):
+        self._vault_url = vault_url
+
     def get_secret(self, name: str) -> str:
         from azure.core.exceptions import AzureError
         from azure.identity import DefaultAzureCredential
         from azure.keyvault.secrets import SecretClient
 
-        if not settings.azure_key_vault_url:
+        if not self._vault_url:
             raise SecretProviderError("AZURE_KEY_VAULT_URL is not configured")
 
-        client = SecretClient(vault_url=settings.azure_key_vault_url, credential=DefaultAzureCredential())
+        client = SecretClient(vault_url=self._vault_url, credential=DefaultAzureCredential())
         try:
             secret = client.get_secret(name)
         except AzureError as exc:
@@ -70,16 +73,27 @@ class AzureKeyVaultProvider(SecretProvider):
         return secret.value
 
 
-_PROVIDERS: dict[str, type[SecretProvider]] = {
-    "env": EnvSecretProvider,
-    "aws_secrets_manager": AWSSecretsManagerProvider,
-    "azure_key_vault": AzureKeyVaultProvider,
-}
+def build_secret_provider(
+    provider_name: str, *, azure_key_vault_url: str | None = None, aws_region: str = "us-east-1"
+) -> SecretProvider:
+    if provider_name == "env":
+        return EnvSecretProvider()
+    if provider_name == "azure_key_vault":
+        return AzureKeyVaultProvider(azure_key_vault_url)
+    if provider_name == "aws_secrets_manager":
+        return AWSSecretsManagerProvider(aws_region)
+    raise SecretProviderError(f"Unknown secret provider: {provider_name}")
 
 
-@lru_cache
 def get_secret_provider() -> SecretProvider:
-    provider_cls = _PROVIDERS.get(settings.secret_provider)
-    if provider_cls is None:
-        raise SecretProviderError(f"Unknown secret provider: {settings.secret_provider}")
-    return provider_cls()
+    """General-purpose accessor for application code running after
+    startup (get_settings() has already returned by then, so no
+    recursion risk here)."""
+    from app.config.settings import get_settings
+
+    settings = get_settings()
+    return build_secret_provider(
+        settings.secret_provider,
+        azure_key_vault_url=settings.azure_key_vault_url,
+        aws_region=settings.aws_secrets_manager_region,
+    )
