@@ -13,7 +13,7 @@ from app.collectors.discover_service import run_discovery_for_scope
 from app.config.rate_limits import MAX_PARALLEL_SCOPES
 from app.database.session import SessionLocal
 from app.models.audit_job import AuditJob, AuditJobScope
-from app.models.cloud_tenant import CloudScope
+from app.models.cloud_tenant import CloudScope, CloudTenant
 from app.workers.celery_app import celery_app
 
 
@@ -33,18 +33,24 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
         audit_job.started_at = datetime.now(timezone.utc)
         db.commit()
 
+        tenant = db.get(CloudTenant, audit_job.tenant_id)
+
         job_scopes = (
             db.query(AuditJobScope).filter(AuditJobScope.audit_job_id == audit_job_id).all()
         )
 
-        max_parallel = MAX_PARALLEL_SCOPES.get("aws", 5)
+        max_parallel = MAX_PARALLEL_SCOPES.get(tenant.provider, 5)
         semaphore = asyncio.Semaphore(max_parallel)
 
         async def _run_one(job_scope: AuditJobScope):
             cloud_scope = db.get(CloudScope, job_scope.cloud_scope_id)
             async with semaphore:
                 await run_discovery_for_scope(
-                    db, job_scope, cloud_scope.external_scope_id, region="us-east-1"
+                    db,
+                    job_scope,
+                    tenant.provider,
+                    cloud_scope.external_scope_id,
+                    region="us-east-1",
                 )
 
         await asyncio.gather(*(_run_one(js) for js in job_scopes), return_exceptions=True)
