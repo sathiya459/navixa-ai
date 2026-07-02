@@ -18,3 +18,16 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
 )
+
+# NAVIXA Watch groundwork (Section 2, Phase 5): poll for due scheduled
+# discoveries every 5 minutes rather than registering one dynamic Celery
+# Beat entry per schedule, since Beat's schedule is code-defined and this
+# platform doesn't otherwise depend on a DB-backed scheduler (e.g.
+# django-celery-beat). Requires running `celery -A app.workers.celery_app
+# beat` alongside the worker for this to actually fire.
+celery_app.conf.beat_schedule = {
+    "navixa-watch-check-scheduled-discoveries": {
+        "task": "navixa.check_scheduled_discoveries",
+        "schedule": 300.0,
+    },
+}

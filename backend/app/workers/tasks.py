@@ -12,12 +12,15 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.collectors.discover_service import run_discovery_for_scope
+from app.collectors.job_service import create_audit_job
 from app.config.rate_limits import MAX_PARALLEL_SCOPES
 from app.database.session import SessionLocal
 from app.graph_engine.writer import GraphResourceInput, sync_job_to_graph
 from app.models.audit_job import AuditJob, AuditJobScope
 from app.models.cloud_tenant import CloudScope, CloudTenant
 from app.models.network_resource import NetworkResource
+from app.schemas.discover import AuditJobCreate
+from app.watch.service import get_due_schedules, mark_schedule_run
 from app.workers.celery_app import celery_app
 
 
@@ -106,3 +109,26 @@ def _sync_graph(db: Session, audit_job_id: uuid.UUID) -> None:
         sync_job_to_graph(graph_inputs, audit_job_id)
     except Exception:  # noqa: BLE001
         pass
+
+
+@celery_app.task(name="navixa.check_scheduled_discoveries")
+def check_scheduled_discoveries() -> None:
+    """NAVIXA Watch groundwork: fired every 5 minutes by Celery Beat
+    (see celery_app.py). For each due ScheduledDiscovery, enqueues a new
+    discovery job and advances next_run_at - it does not itself compute
+    diffs; run change detection separately via the /watch API once both
+    the new and a prior job have completed.
+    """
+    db = SessionLocal()
+    try:
+        for schedule in get_due_schedules(db):
+            payload = AuditJobCreate(
+                tenant_id=schedule.tenant_id,
+                scope_ids=[uuid.UUID(s) for s in schedule.scope_ids],
+                hub_selection=schedule.hub_selection,
+            )
+            audit_job = create_audit_job(db, payload, initiated_by=schedule.created_by)
+            run_discovery.delay(str(audit_job.id))
+            mark_schedule_run(db, schedule)
+    finally:
+        db.close()
