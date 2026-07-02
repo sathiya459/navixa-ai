@@ -31,6 +31,24 @@ services:
       timeout: 5s
       retries: 5
 
+  neo4j:
+    image: neo4j:5-community
+    container_name: navixa_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme}
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ../backend
@@ -43,6 +61,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -62,6 +82,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     volumes:
       - ../backend:/app
@@ -84,3 +106,4 @@ services:
 
 volumes:
   postgres_data:
+  neo4j_data:
