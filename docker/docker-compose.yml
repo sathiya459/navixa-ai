@@ -73,9 +73,12 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    container_name: navixa_celery_worker
     restart: unless-stopped
-    command: celery -A app.workers.celery_app worker --loglevel=info
+    # No fixed container_name: Docker Compose refuses to scale a service
+    # that has one. Horizontal scale-out (Section 20 Phase 5 "Scaling") is
+    # `docker compose up --scale celery_worker=N`; per-process concurrency
+    # is CELERY_WORKER_CONCURRENCY (see .env.example), independent of N.
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-4}
     env_file:
       - ../.env
     depends_on:
