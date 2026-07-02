@@ -53,9 +53,19 @@ def is_azure_throttled(exc: Exception) -> bool:
     return exc.status_code == 429
 
 
+def is_gcp_throttled(exc: Exception) -> bool:
+    from google.api_core.exceptions import ResourceExhausted, TooManyRequests
+
+    return isinstance(exc, (ResourceExhausted, TooManyRequests))
+
+
 async def with_aws_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
     return await with_retry(func, is_aws_throttled, **kwargs)
 
 
 async def with_azure_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
     return await with_retry(func, is_azure_throttled, **kwargs)
+
+
+async def with_gcp_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
+    return await with_retry(func, is_gcp_throttled, **kwargs)
