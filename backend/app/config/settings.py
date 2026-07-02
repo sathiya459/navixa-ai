@@ -84,6 +84,20 @@ class Settings(BaseSettings):
     oci_session_token_path: str | None = None
     oci_config_profile: str = "DEFAULT"
 
+    # Secret Manager (Section 7, Phase 5). "env" (default) reads secrets
+    # from environment variables / .env, matching Section 7's development
+    # posture. Production deployments set this to "aws_secrets_manager" or
+    # "azure_key_vault" instead of putting real secrets in env files.
+    secret_provider: str = "env"
+    aws_secrets_manager_region: str = "us-east-1"
+    azure_key_vault_url: str | None = None
+
+    # Celery worker scaling (Section 20 Phase 5 "Scaling"). Concurrency is
+    # per-worker-process; horizontal scale-out is achieved by running more
+    # worker containers/replicas (see docker-compose.yml comments), not by
+    # raising this alone.
+    celery_worker_concurrency: int = 4
+
 
 @lru_cache
 def get_settings() -> Settings:
