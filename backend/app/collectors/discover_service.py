@@ -1,6 +1,5 @@
 """Persists NAVIXA Discover results: per-resource-type status + normalized inventory."""
 
-import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
