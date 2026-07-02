@@ -29,6 +29,24 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # NAVIXA InsightAI providers (Section 15) - unset means "not configured";
+    # never hardcode a real key here, only via environment/.env/Secret Manager.
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-sonnet-5"
+
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o"
+
+    azure_openai_api_key: str | None = None
+    azure_openai_endpoint: str | None = None
+    azure_openai_deployment: str | None = None
+
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
+
+    aws_bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    aws_default_region: str = "us-east-1"
+
 
 @lru_cache
 def get_settings() -> Settings:
