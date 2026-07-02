@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / React
+node_modules/
+dist/
+build/
+.next/
+
+# Docker
+*.log
+
+# Neo4j / DB volumes
+data/
+postgres_data/
+neo4j_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
