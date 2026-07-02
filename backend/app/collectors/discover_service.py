@@ -8,6 +8,7 @@ from app.collectors.aws.orchestrator import discover_aws_scope
 from app.collectors.azure.orchestrator import discover_azure_scope
 from app.collectors.base import CollectionResult
 from app.collectors.gcp.orchestrator import discover_gcp_scope
+from app.collectors.oci.orchestrator import discover_oci_scope
 from app.collectors.normalization import normalize_results
 from app.models.audit_job import AuditJobScope, ResourceCollectionStatusRow
 from app.models.network_resource import NetworkResource
@@ -31,6 +32,8 @@ async def _discover_by_provider(
         return await discover_azure_scope(external_scope_id)
     if provider == "gcp":
         return await discover_gcp_scope(external_scope_id)
+    if provider == "oci":
+        return await discover_oci_scope(external_scope_id, region)
     raise NotImplementedError(f"NAVIXA Discover does not yet support provider: {provider}")
 
 

@@ -59,6 +59,12 @@ def is_gcp_throttled(exc: Exception) -> bool:
     return isinstance(exc, (ResourceExhausted, TooManyRequests))
 
 
+def is_oci_throttled(exc: Exception) -> bool:
+    from oci.exceptions import ServiceError
+
+    return isinstance(exc, ServiceError) and exc.status == 429
+
+
 async def with_aws_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
     return await with_retry(func, is_aws_throttled, **kwargs)
 
@@ -69,3 +75,7 @@ async def with_azure_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
 
 async def with_gcp_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
     return await with_retry(func, is_gcp_throttled, **kwargs)
+
+
+async def with_oci_retry(func: Callable[[], Awaitable[T]], **kwargs) -> T:
+    return await with_retry(func, is_oci_throttled, **kwargs)
