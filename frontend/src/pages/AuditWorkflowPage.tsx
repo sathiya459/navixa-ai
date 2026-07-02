@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   Alert,
   Box,
@@ -22,7 +23,24 @@ import {
 import { listScopes, listTenants } from "../api/tenants";
 import { createAuditJob, getJobStatus } from "../api/discover";
 import { getFindings, runValidation } from "../api/validate";
-import type { Finding, JobStatus, Scope, Tenant } from "../api/types";
+import { listAIProviders } from "../api/insightai";
+import type {
+  AIProviderName,
+  AIProviderStatus,
+  AnalysisMode,
+  Finding,
+  JobStatus,
+  Scope,
+  Tenant,
+} from "../api/types";
+
+const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
+  claude: "Claude",
+  openai: "OpenAI",
+  azure_openai: "Azure OpenAI",
+  gemini: "Gemini",
+  bedrock: "AWS Bedrock",
+};
 
 const STEPS = [
   "Select Tenant",
@@ -50,8 +68,17 @@ export function AuditWorkflowPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("rule_engine");
+  const [aiProviders, setAiProviders] = useState<AIProviderStatus[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<AIProviderName | "">("");
+
   useEffect(() => {
     listTenants().then(setTenants).catch(() => setError("Failed to load tenants."));
+    listAIProviders()
+      .then(setAiProviders)
+      .catch(() => {
+        // Non-fatal: only Admins can list providers: default to rule_engine.
+      });
   }, []);
 
   useEffect(() => {
@@ -102,12 +129,20 @@ export function AuditWorkflowPage() {
     setIsLoading(true);
     setError(null);
     try {
-      await runValidation(jobId, parsedHubIds);
+      await runValidation(
+        jobId,
+        parsedHubIds,
+        analysisMode,
+        analysisMode === "ai" ? (selectedProvider as AIProviderName) : undefined,
+      );
       const results = await getFindings(jobId);
       setFindings(results);
       setActiveStep(4);
-    } catch {
-      setError("Failed to run validation.");
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? (err.response?.data?.detail ?? "Failed to run validation.")
+        : "Failed to run validation.";
+      setError(typeof message === "string" ? message : "Failed to run validation.");
     } finally {
       setIsLoading(false);
     }
@@ -248,10 +283,52 @@ export function AuditWorkflowPage() {
                 </Box>
               </Paper>
             ))}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+              <Typography variant="subtitle2">Analysis Mode</Typography>
+              <TextField
+                select
+                label="How should findings be generated?"
+                value={analysisMode}
+                onChange={(e) => setAnalysisMode(e.target.value as AnalysisMode)}
+                sx={{ maxWidth: 420 }}
+              >
+                <MenuItem value="rule_engine">
+                  Rule Engine (deterministic, NAVIXA Validate)
+                </MenuItem>
+                <MenuItem value="ai">AI Analysis (LLM-based deviation detection)</MenuItem>
+              </TextField>
+
+              {analysisMode === "ai" && (
+                <TextField
+                  select
+                  label="AI Provider"
+                  value={selectedProvider}
+                  onChange={(e) => setSelectedProvider(e.target.value as AIProviderName)}
+                  sx={{ maxWidth: 420 }}
+                  helperText={
+                    aiProviders.length === 0
+                      ? "Could not load provider status"
+                      : "Providers marked (not configured) will fail until an API key is set"
+                  }
+                >
+                  {aiProviders.map((p) => (
+                    <MenuItem key={p.provider} value={p.provider}>
+                      {AI_PROVIDER_LABELS[p.provider]}
+                      {!p.configured ? " (not configured)" : ""}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+            </Box>
+
             <Box sx={{ display: "flex", gap: 2 }}>
               <Button
                 variant="contained"
-                disabled={!discoveryDone || isLoading}
+                disabled={
+                  !discoveryDone ||
+                  isLoading ||
+                  (analysisMode === "ai" && !selectedProvider)
+                }
                 onClick={handleRunValidation}
               >
                 {isLoading ? "Running..." : "Run NAVIXA Validate"}
@@ -277,8 +354,13 @@ export function AuditWorkflowPage() {
             )}
             {findings.map((finding) => (
               <Paper key={finding.id} variant="outlined" sx={{ p: 2 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Typography variant="subtitle1">{finding.title}</Typography>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                  <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
+                    {finding.title}
+                  </Typography>
+                  {finding.module === "ai_analysis" && (
+                    <Chip label="AI" size="small" color="secondary" variant="outlined" />
+                  )}
                   <Chip label={finding.severity} color="error" size="small" />
                 </Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

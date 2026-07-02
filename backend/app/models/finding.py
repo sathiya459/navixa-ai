@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin, UUIDPKMixin
 
-FindingModule = Enum("validate", "pathfinder", name="finding_module")
+FindingModule = Enum("validate", "pathfinder", "ai_analysis", name="finding_module")
 FindingSeverity = Enum("critical", "high", "medium", "low", "informational", name="finding_severity")
 FindingStatus = Enum("open", "acknowledged", "resolved", "false_positive", name="finding_status")
 

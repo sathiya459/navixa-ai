@@ -5,22 +5,43 @@ from app.auth.sso_service import get_or_create_entra_user
 from app.main import app
 
 
-def test_entra_not_configured_by_default():
+def test_entra_not_configured_by_default(monkeypatch):
+    # Pin explicitly: a developer's local .env with a real Entra App
+    # Registration configured (as this project's does, post Section 8a
+    # setup) would otherwise leak into this test via the shared settings
+    # singleton.
+    from app.auth import entra
+
+    monkeypatch.setattr(entra.settings, "entra_tenant_id", None)
+    monkeypatch.setattr(entra.settings, "entra_client_id", None)
+    monkeypatch.setattr(entra.settings, "entra_client_secret", None)
     assert is_entra_configured() is False
 
 
-def test_sso_login_returns_503_when_not_configured():
+def test_sso_login_returns_503_when_not_configured(monkeypatch):
+    from app.api.v1 import auth as auth_router_module
+
+    monkeypatch.setattr(auth_router_module.settings, "entra_tenant_id", None)
+    monkeypatch.setattr(auth_router_module.settings, "entra_client_id", None)
+    monkeypatch.setattr(auth_router_module.settings, "entra_client_secret", None)
+
     client = TestClient(app)
     response = client.get("/api/v1/auth/sso/entra/login", follow_redirects=False)
     assert response.status_code == 503
 
 
-def test_sso_callback_redirects_to_frontend_with_error_when_not_configured():
+def test_sso_callback_redirects_to_frontend_with_error_when_not_configured(monkeypatch):
     """The callback is a full-page browser navigation landed on by Entra's
     own redirect, not an API call a frontend can inspect a status code
     from - so failures redirect back into the SPA with an error fragment
     rather than raising, which would just show the browser a bare error
     page with nothing the SPA can react to."""
+    from app.api.v1 import auth as auth_router_module
+
+    monkeypatch.setattr(auth_router_module.settings, "entra_tenant_id", None)
+    monkeypatch.setattr(auth_router_module.settings, "entra_client_id", None)
+    monkeypatch.setattr(auth_router_module.settings, "entra_client_secret", None)
+
     client = TestClient(app)
     response = client.get(
         "/api/v1/auth/sso/entra/callback", params={"code": "fake-code"}, follow_redirects=False
