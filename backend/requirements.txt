@@ -22,6 +22,9 @@ anthropic==0.34.2
 openai==1.51.0
 google-generativeai==0.8.2
 python-multipart==0.0.9
+jinja2==3.1.4
+fpdf2==2.7.9
+openpyxl==3.1.5
 
 # dev/test
 pytest==8.3.3
