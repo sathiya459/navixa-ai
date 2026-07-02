@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { RequireAuth } from "./auth/RequireAuth";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { LoginPage } from "./pages/LoginPage";
+import { SsoCallbackPage } from "./pages/SsoCallbackPage";
 import { DashboardHomePage } from "./pages/DashboardHomePage";
 import { AuditWorkflowPage } from "./pages/AuditWorkflowPage";
 import { TopologyPage } from "./pages/TopologyPage";
@@ -13,6 +14,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/sso/callback" element={<SsoCallbackPage />} />
           <Route element={<RequireAuth />}>
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<DashboardHomePage />} />

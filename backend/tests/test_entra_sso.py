@@ -15,10 +15,18 @@ def test_sso_login_returns_503_when_not_configured():
     assert response.status_code == 503
 
 
-def test_sso_callback_returns_503_when_not_configured():
+def test_sso_callback_redirects_to_frontend_with_error_when_not_configured():
+    """The callback is a full-page browser navigation landed on by Entra's
+    own redirect, not an API call a frontend can inspect a status code
+    from - so failures redirect back into the SPA with an error fragment
+    rather than raising, which would just show the browser a bare error
+    page with nothing the SPA can react to."""
     client = TestClient(app)
-    response = client.get("/api/v1/auth/sso/entra/callback", params={"code": "fake-code"})
-    assert response.status_code == 503
+    response = client.get(
+        "/api/v1/auth/sso/entra/callback", params={"code": "fake-code"}, follow_redirects=False
+    )
+    assert response.status_code in (302, 307)
+    assert "error=sso_not_configured" in response.headers["location"]
 
 
 def test_get_authorization_url_when_configured(monkeypatch):

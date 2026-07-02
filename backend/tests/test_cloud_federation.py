@@ -9,12 +9,49 @@ import asyncio
 
 import pytest
 
+from app.collectors.aws.client import assume_role_for_scope as aws_assume_role_for_scope
+from app.collectors.aws.client import get_async_session as aws_get_async_session
 from app.collectors.azure.client import StubAsyncCredential, get_scoped_credential as azure_get_credential
 from app.collectors.azure.client import is_azure_federation_configured
 from app.collectors.gcp.client import get_scoped_credential as gcp_get_credential
 from app.collectors.gcp.client import is_gcp_federation_configured
 from app.collectors.oci.client import get_scoped_config as oci_get_scoped_config
 from app.collectors.oci.client import is_oci_federation_configured
+
+
+def test_aws_delegated_mode_skips_assume_role(monkeypatch):
+    from app.collectors.aws import client
+
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
+
+    creds = asyncio.run(aws_assume_role_for_scope("111122223333", "us-east-1"))
+    assert creds is None
+
+    session = aws_get_async_session(creds, "us-east-1")
+    assert session.region_name == "us-east-1"
+
+
+def test_azure_delegated_mode_uses_default_credential(monkeypatch):
+    from azure.identity.aio import DefaultAzureCredential
+
+    from app.collectors.azure import client
+
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
+
+    credential = asyncio.run(azure_get_credential("sub-1"))
+    assert isinstance(credential, DefaultAzureCredential)
+
+
+def test_gcp_delegated_mode_uses_default_credentials(monkeypatch):
+    from google.auth.credentials import AnonymousCredentials
+
+    from app.collectors.gcp import client
+
+    monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
+    monkeypatch.setattr(client, "google_auth_default", lambda: (AnonymousCredentials(), "project-1"))
+
+    credential = asyncio.run(gcp_get_credential("project-1"))
+    assert isinstance(credential, AnonymousCredentials)
 
 
 def test_azure_falls_back_to_stub_when_unconfigured(monkeypatch):

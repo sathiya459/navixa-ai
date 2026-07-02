@@ -144,6 +144,19 @@ Develop an enterprise-grade web application — **NAVIXA AI** — to perform mul
 - **Production:** Microsoft Entra ID, OAuth2, OIDC, MFA
 - **Roles:** Admin, Auditor, Viewer
 
+### Login Screen — Dual Authentication Path
+
+The NAVIXA AI login screen presents **two options**:
+
+- **Local Admin Login** — username/password against the local PostgreSQL-backed user store, JWT issued on success. This is the fallback/dev-convenience path and always available for the seeded Admin account, regardless of environment.
+- **Sign in with SSO** — Microsoft Entra ID (OAuth2/OIDC, MFA-capable). Selecting this redirects to Entra ID's interactive login; on successful auth, NAVIXA maps the returned identity to a NAVIXA RBAC role (Admin/Auditor/Viewer) via the Users/Roles tables.
+
+Both paths issue the same internal JWT/session format to the rest of the application — downstream services (API, RBAC checks) don't need to know which login path was used.
+
+> Note: this Entra ID SSO at the login screen is for **NAVIXA application access** (who can log into NAVIXA and what they can see). It is separate from the **per-cloud-provider authentication** (AWS/Azure/GCP/OCI credentials used by NAVIXA Discover to call cloud APIs), covered in Section 8a — a user can log into NAVIXA via Local Admin and still have NAVIXA Discover use their delegated cloud credentials, and vice versa.
+
+Whether a developer logs into NAVIXA itself via Local Admin or Entra SSO, their identity is provisioned as a normal row in the Users/Roles tables mapped to the **NAVIXA Admin** role during the dev phase — not a hardcoded bypass — so the same RBAC model scales to real multi-user setups later.
+
 ---
 
 ## 7. Security Requirements
@@ -166,6 +179,42 @@ Develop an enterprise-grade web application — **NAVIXA AI** — to perform mul
 
 ---
 
+## 8a. Dev-Time Cloud Provider Authentication, Caching & Future App Registration
+
+### Dev-Time Cloud Provider Authentication (Delegated / Interactive User Auth)
+
+During development, NAVIXA AI authenticates to each **cloud provider** as the developer, using delegated/interactive sign-in rather than a standing service identity:
+
+- **Azure:** Entra ID interactive login (OAuth2 Authorization Code flow via MSAL) — the developer's own Entra ID account.
+- **AWS:** IAM Identity Center SSO login using the developer's own permission set/assignment.
+- **GCP:** User credentials via interactive OAuth (equivalent of `gcloud auth application-default login`), scoped to the developer's own IAM role bindings.
+- **OCI:** Browser-based SSO / Identity Domains login using the developer's own user identity.
+- All calls to cloud provider APIs run under the permissions already granted to the developer's own account (assumed Admin-equivalent for this dev phase) — no separate service credentials yet.
+- Still complies with Section 8: **temporary, short-lived tokens only** — only *whose* identity issues the token differs in this phase, not the credential lifetime rule.
+
+### Temporary Result Caching (Avoid Redundant Cross-Cloud API Calls)
+
+- Store normalized discovery + analysis results in `navixa_cache` (Redis) with a configurable TTL (default 30–60 minutes).
+- Cache key scoped per tenant + account/subscription/project + resource type, so partial cache hits are possible.
+- Every audit run exposes a **"Force Refresh"** option that bypasses cache and re-queries live cloud APIs.
+- Cached data flagged clearly in UI/API response (`"source": "cache"` vs `"live"`, with `cached_at` timestamp).
+- Sits between NAVIXA Discover and NAVIXA Graph/Validate — doesn't change the normalized data model, only call frequency.
+
+### Future State: Azure Entra ID App Registration (Seamless / Headless Cloud Auth)
+
+- Support two **cloud-provider** auth modes per tenant from day one at the interface level:
+  - **Delegated mode** (current): interactive user sign-in, token acquired on behalf of a signed-in human.
+  - **App-only mode** (future): Entra ID App Registration using client credentials flow (service principal + client secret/certificate, stored in Key Vault) — no human sign-in required, enabling scheduled/automated audit runs.
+- Tenant Registry (Section 9) stores which auth mode a tenant uses, plus non-sensitive app registration metadata (Client ID, Tenant ID, redirect URI) — secrets stay in Key Vault only.
+- NAVIXA Discover's cloud API calls are written against an AuthProvider interface, not a specific flow — collectors work unchanged regardless of active mode per tenant.
+
+### Test App Registration (Validate the Future Path Now)
+
+- An existing **test Entra ID app registration** (limited resources) is used now, in parallel with delegated dev auth, to validate the app-only/client-credentials path end-to-end.
+- Wired into the Tenant Registry as a second, clearly-labeled test tenant (e.g., `tenant_name: "NAVIXA Test — App Registration"`), separate from the primary admin-delegated tenant, so both auth paths can be exercised side by side during development.
+
+---
+
 ## 9. Tenant Registry
 
 Store non-sensitive metadata only:
@@ -175,6 +224,8 @@ Store non-sensitive metadata only:
 - Organization ID
 - SSO/Login URL
 - Region Information
+- Cloud Auth Mode (`delegated` | `app_only` — see Section 8a)
+- App Registration metadata when in `app_only` mode: Client ID, Tenant ID, Redirect URI (non-sensitive only; secrets live in Key Vault, never here)
 
 ---
 

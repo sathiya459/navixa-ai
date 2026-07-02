@@ -59,11 +59,23 @@ class Settings(BaseSettings):
     entra_client_id: str | None = None
     entra_client_secret: str | None = None
     entra_redirect_uri: str = "http://localhost:8000/api/v1/auth/sso/entra/callback"
+    # Where the browser lands after a successful SSO callback, with tokens
+    # appended as a URL fragment (never a query string, so they aren't
+    # captured in server access logs or Referer headers along the way).
+    frontend_sso_redirect_url: str = "http://localhost:5173/sso/callback"
 
-    # Cloud federation for NAVIXA Discover (Section 8, Phase 5). Each
-    # provider falls back to Phase 1/2's stub credentials when its
-    # federation config is unset, so local dev without real cloud accounts
-    # keeps working unchanged.
+    # Cloud auth mode for NAVIXA Discover (Section 8a): "delegated" uses
+    # whatever identity the developer already signed into on this machine
+    # via each cloud's own CLI (`az login`, `aws sso login`,
+    # `gcloud auth application-default login`, `oci session authenticate`)
+    # - the SDK default credential chain picks that up automatically, no
+    # separate flow needed in this backend. "app_only" uses the Phase 5
+    # federation paths below (AssumeRole / ClientSecretCredential /
+    # impersonated service account / OCI session signer). Falls back to
+    # Phase 1/2's stub credentials when the selected mode isn't configured,
+    # so local dev without either keeps working unchanged.
+    cloud_auth_mode: str = "app_only"
+
     aws_audit_role_name: str = "NavixaAuditRole"
     aws_audit_external_id: str | None = None
 
@@ -80,7 +92,9 @@ class Settings(BaseSettings):
 
     # OCI Federation / Identity Domains: a session-token-based signer path
     # (federated) when a session token is available, else instance
-    # principal auth for workloads already running on OCI compute.
+    # principal auth for workloads already running on OCI compute. This
+    # session-token path (from `oci session authenticate`) already *is*
+    # delegated user auth, so OCI doesn't need a separate delegated branch.
     oci_session_token_path: str | None = None
     oci_config_profile: str = "DEFAULT"
 
