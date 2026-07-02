@@ -23,7 +23,7 @@ AuditJobStatus = Enum(
 ScopeJobStatus = Enum("pending", "running", "success", "partial", "failed", name="scope_job_status")
 
 ResourceCollectionStatus = Enum(
-    "success", "partial", "failed", name="resource_collection_status"
+    "success", "partial", "failed", name="resource_collection_status_type"
 )
 
 
