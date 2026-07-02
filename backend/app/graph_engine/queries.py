@@ -5,6 +5,10 @@ from typing import Any
 
 from neo4j import Driver
 
+from app.config.settings import get_settings
+
+_NEO4J_DATABASE = get_settings().neo4j_database
+
 
 def get_job_topology(driver: Driver, audit_job_id: uuid.UUID) -> dict[str, list[dict[str, Any]]]:
     query = """
@@ -15,7 +19,7 @@ def get_job_topology(driver: Driver, audit_job_id: uuid.UUID) -> dict[str, list[
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
 
-    with driver.session(database="navixa_graph") as session:
+    with driver.session(database=_NEO4J_DATABASE) as session:
         result = session.run(query, {"audit_job_id": str(audit_job_id)})
         for record in result:
             n = record["n"]
@@ -44,7 +48,7 @@ def get_node_neighbors(driver: Driver, node_id: str, depth: int = 1) -> dict[str
     """
     nodes: dict[str, dict[str, Any]] = {}
 
-    with driver.session(database="navixa_graph") as session:
+    with driver.session(database=_NEO4J_DATABASE) as session:
         result = session.run(query, {"node_id": node_id})
         for record in result:
             n = record["n"]
@@ -64,7 +68,7 @@ def get_shortest_paths(driver: Driver, source_id: str, target_id: str) -> list[l
     """
     paths: list[list[dict[str, Any]]] = []
 
-    with driver.session(database="navixa_graph") as session:
+    with driver.session(database=_NEO4J_DATABASE) as session:
         result = session.run(query, {"source_id": source_id, "target_id": target_id})
         for record in result:
             paths.append([_node_to_dict(node) for node in record["path_nodes"]])

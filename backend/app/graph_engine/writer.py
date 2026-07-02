@@ -107,10 +107,11 @@ def _extract_peering_endpoints(resource: GraphResourceInput) -> tuple[str | None
 
 
 def sync_job_to_graph(resources: list[GraphResourceInput], audit_job_id: uuid.UUID) -> None:
+    from app.config.settings import get_settings
     from app.graph_engine.session import get_driver
 
     statements = build_statements(resources, audit_job_id)
     driver = get_driver()
-    with driver.session(database="navixa_graph") as session:
+    with driver.session(database=get_settings().neo4j_database) as session:
         for cypher, params in statements:
             session.run(cypher, params)

@@ -30,6 +30,9 @@ neo4j_data/
 # NAVIXA Reports output (Section 17) - generated files, not source
 backend/generated_reports/
 
+# Celery beat local scheduler state
+backend/celerybeat-schedule*
+
 # IDE
 .vscode/
 .idea/

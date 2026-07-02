@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.collectors.discover_service import run_discovery_for_scope
 from app.collectors.job_service import create_audit_job
 from app.config.rate_limits import MAX_PARALLEL_SCOPES
+from app.config.settings import get_settings
 from app.database.session import SessionLocal
 from app.graph_engine.writer import GraphResourceInput, sync_job_to_graph
 from app.models.audit_job import AuditJob, AuditJobScope
@@ -22,6 +23,9 @@ from app.models.network_resource import NetworkResource
 from app.schemas.discover import AuditJobCreate
 from app.watch.service import get_due_schedules, mark_schedule_run
 from app.workers.celery_app import celery_app
+
+
+settings = get_settings()
 
 
 @celery_app.task(name="navixa.run_discovery")
@@ -42,6 +46,16 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
 
         tenant = db.get(CloudTenant, audit_job.tenant_id)
 
+        # Section 9's region_info is free-form JSONB; a "default_region" key
+        # overrides settings.aws_default_region when the tenant specifies
+        # one. Previously this was hardcoded to "us-east-1" regardless of
+        # the tenant's actual region, which silently discovered whatever
+        # resources happened to exist in that region instead of the
+        # account's real one - found by running a real discovery job
+        # against an ap-south-1 account and getting back us-east-1 data
+        # with no error at all.
+        region = (tenant.region_info or {}).get("default_region", settings.aws_default_region)
+
         job_scopes = (
             db.query(AuditJobScope).filter(AuditJobScope.audit_job_id == audit_job_id).all()
         )
@@ -57,7 +71,7 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
                     job_scope,
                     tenant.provider,
                     cloud_scope.external_scope_id,
-                    region="us-east-1",
+                    region=region,
                 )
 
         await asyncio.gather(*(_run_one(js) for js in job_scopes), return_exceptions=True)

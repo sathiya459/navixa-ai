@@ -16,10 +16,16 @@ class Settings(BaseSettings):
     # Redis (navixa_cache)
     redis_url: str = "redis://localhost:6379/0"
 
-    # Neo4j (navixa_graph) - wired in Phase 3
+    # Neo4j (navixa_graph) - wired in Phase 3. Named multi-database support
+    # (i.e. an actual database literally called "navixa_graph") is a Neo4j
+    # Enterprise-only feature; Community Edition only has the single
+    # default database. Defaulting to "neo4j" here so this works out of
+    # the box on Community; set NEO4J_DATABASE=navixa_graph if running
+    # against Enterprise with that database created.
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "changeme"
+    neo4j_database: str = "neo4j"
 
     # JWT
     jwt_secret_key: str = "changeme-dev-only"
