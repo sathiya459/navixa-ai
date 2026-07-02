@@ -49,5 +49,22 @@ services:
     volumes:
       - ../backend:/app
 
+  celery_worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: navixa_celery_worker
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    env_file:
+      - ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+
 volumes:
   postgres_data:
