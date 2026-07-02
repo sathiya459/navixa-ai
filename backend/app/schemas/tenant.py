@@ -60,3 +60,9 @@ class ScopeResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class AvailableAccountResponse(BaseModel):
+    external_id: str
+    display_name: str
+    already_added: bool

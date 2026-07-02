@@ -6,40 +6,61 @@ require live cloud accounts and are not exercised here.
 """
 
 import asyncio
+import uuid
+from types import SimpleNamespace
 
 import pytest
 
 from app.collectors.aws.client import assume_role_for_scope as aws_assume_role_for_scope
 from app.collectors.aws.client import get_async_session as aws_get_async_session
-from app.collectors.azure.client import StubAsyncCredential, get_scoped_credential as azure_get_credential
+from app.collectors.azure.client import DelegatedMsalCredential, StubAsyncCredential
+from app.collectors.azure.client import get_scoped_credential as azure_get_credential
 from app.collectors.azure.client import is_azure_federation_configured
+from app.collectors.delegated_auth_errors import DelegatedAuthRequiredError
 from app.collectors.gcp.client import get_scoped_credential as gcp_get_credential
 from app.collectors.gcp.client import is_gcp_federation_configured
 from app.collectors.oci.client import get_scoped_config as oci_get_scoped_config
 from app.collectors.oci.client import is_oci_federation_configured
 
 
-def test_aws_delegated_mode_skips_assume_role(monkeypatch):
+def _fake_tenant(**overrides) -> SimpleNamespace:
+    defaults = dict(
+        id=uuid.uuid4(),
+        provider="azure",
+        external_tenant_id="tenant-1",
+        app_registration_client_id=None,
+        app_registration_tenant_id=None,
+        delegated_token_cache=None,
+        region_info=None,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_aws_delegated_mode_requires_sso_session(monkeypatch):
     from app.collectors.aws import client
 
     monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
 
-    creds = asyncio.run(aws_assume_role_for_scope("111122223333", "us-east-1"))
-    assert creds is None
+    tenant = _fake_tenant(provider="aws")
+    with pytest.raises(DelegatedAuthRequiredError):
+        asyncio.run(aws_assume_role_for_scope(tenant, "111122223333", "us-east-1"))
 
-    session = aws_get_async_session(creds, "us-east-1")
+    session = aws_get_async_session(None, "us-east-1")
     assert session.region_name == "us-east-1"
 
 
-def test_azure_delegated_mode_uses_default_credential(monkeypatch):
-    from azure.identity.aio import DefaultAzureCredential
-
+def test_azure_delegated_mode_returns_delegated_credential_and_requires_session(monkeypatch):
     from app.collectors.azure import client
 
     monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
 
-    credential = asyncio.run(azure_get_credential("sub-1"))
-    assert isinstance(credential, DefaultAzureCredential)
+    tenant = _fake_tenant()
+    credential = azure_get_credential(tenant)
+    assert isinstance(credential, DelegatedMsalCredential)
+
+    with pytest.raises(DelegatedAuthRequiredError):
+        asyncio.run(credential.get_token())
 
 
 def test_gcp_delegated_mode_uses_default_credentials(monkeypatch):
@@ -65,7 +86,7 @@ def test_azure_falls_back_to_stub_when_unconfigured(monkeypatch):
     monkeypatch.setattr(client.settings, "azure_federation_tenant_id", None)
     assert is_azure_federation_configured() is False
 
-    credential = asyncio.run(azure_get_credential("sub-1"))
+    credential = azure_get_credential(_fake_tenant())
     assert isinstance(credential, StubAsyncCredential)
 
 
@@ -80,7 +101,7 @@ def test_azure_uses_client_secret_credential_when_configured(monkeypatch):
     monkeypatch.setattr(client.settings, "azure_federation_client_secret", "secret-1")
     assert is_azure_federation_configured() is True
 
-    credential = asyncio.run(azure_get_credential("sub-1"))
+    credential = azure_get_credential(_fake_tenant())
     assert isinstance(credential, ClientSecretCredential)
 
 

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, CircularProgress, Typography } from "@mui/material";
+import HubIcon from "@mui/icons-material/Hub";
 import { getCurrentUser } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 
@@ -49,9 +50,11 @@ export function SsoCallbackPage() {
         justifyContent: "center",
         minHeight: "100vh",
         gap: 2,
+        bgcolor: "background.default",
       }}
     >
-      <CircularProgress />
+      <HubIcon color="primary" sx={{ fontSize: 40, mb: 1 }} />
+      <CircularProgress size={28} />
       <Typography color="text.secondary">Completing sign-in...</Typography>
     </Box>
   );

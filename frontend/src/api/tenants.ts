@@ -1,5 +1,12 @@
 import { apiClient } from "./client";
-import type { CloudAuthMode, CloudProvider, Scope, ScopeType, Tenant } from "./types";
+import type {
+  AvailableAccount,
+  CloudAuthMode,
+  CloudProvider,
+  Scope,
+  ScopeType,
+  Tenant,
+} from "./types";
 
 export interface TenantCreatePayload {
   provider: CloudProvider;
@@ -40,5 +47,12 @@ export async function listScopes(tenantId: string): Promise<Scope[]> {
 
 export async function createScope(tenantId: string, payload: ScopeCreatePayload): Promise<Scope> {
   const { data } = await apiClient.post<Scope>(`/tenants/${tenantId}/scopes`, payload);
+  return data;
+}
+
+export async function getAvailableAccounts(tenantId: string): Promise<AvailableAccount[]> {
+  const { data } = await apiClient.get<AvailableAccount[]>(
+    `/tenants/${tenantId}/available-accounts`,
+  );
   return data;
 }

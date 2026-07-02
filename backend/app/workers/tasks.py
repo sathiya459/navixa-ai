@@ -69,7 +69,7 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
                 await run_discovery_for_scope(
                     db,
                     job_scope,
-                    tenant.provider,
+                    tenant,
                     cloud_scope.external_scope_id,
                     region=region,
                 )

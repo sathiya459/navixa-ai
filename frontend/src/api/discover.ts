@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { AuditJob, JobStatus, NetworkResource } from "./types";
+import type { AuditJob, AuditJobListItem, JobStatus, NetworkResource } from "./types";
 
 export async function createAuditJob(
   tenantId: string,
@@ -17,6 +17,17 @@ export async function createAuditJob(
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   const { data } = await apiClient.get<JobStatus>(`/discover/jobs/${jobId}/status`);
   return data;
+}
+
+export async function listAuditJobs(tenantId?: string): Promise<AuditJobListItem[]> {
+  const { data } = await apiClient.get<AuditJobListItem[]>("/discover/jobs", {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+  return data;
+}
+
+export async function deleteAuditJob(jobId: string): Promise<void> {
+  await apiClient.delete(`/discover/jobs/${jobId}`);
 }
 
 export async function getJobResources(

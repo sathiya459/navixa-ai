@@ -1,5 +1,6 @@
 import uuid
 
+import sqlalchemy as sa
 from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -35,6 +36,11 @@ class CloudTenant(Base, UUIDPKMixin, TimestampMixin):
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    # Encrypted (app/auth/token_encryption.py) session state from the
+    # per-tenant SSO popup login (Section 8a delegated mode): an MSAL
+    # serialized token cache for Azure, or an AWS SSO OIDC client
+    # registration + token for AWS. Never stored in plaintext.
+    delegated_token_cache: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
     scopes: Mapped[list["CloudScope"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"

@@ -39,6 +39,12 @@ export interface Scope {
   is_active: boolean;
 }
 
+export interface AvailableAccount {
+  external_id: string;
+  display_name: string;
+  already_added: boolean;
+}
+
 export type AuditJobStatus =
   | "queued"
   | "discovering"
@@ -56,6 +62,15 @@ export interface AuditJob {
   tenant_id: string;
   status: AuditJobStatus;
   created_at: string;
+}
+
+export interface AuditJobListItem {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  status: AuditJobStatus;
+  created_at: string;
+  scope_count: number;
 }
 
 export interface ResourceStatus {

@@ -8,13 +8,17 @@ from app.database.session import get_db
 from app.models.role import ADMIN, AUDITOR, VIEWER
 from app.models.user import User
 from app.schemas.tenant import (
+    AvailableAccountResponse,
     ScopeCreate,
     ScopeResponse,
     TenantCreate,
     TenantResponse,
     TenantUpdate,
 )
+from app.collectors.delegated_auth_errors import DelegatedAuthRequiredError, build_delegated_auth_detail
 from app.tenant_registry import service
+from app.tenant_registry.account_sync import UnsupportedProviderError, discover_available_accounts
+from app.tenant_registry.service import TenantHasAuditJobsError
 
 router = APIRouter(prefix="/tenants", tags=["Tenants"])
 
@@ -71,7 +75,43 @@ def delete_tenant(
     _current_user: User = Depends(require_role(ADMIN)),
 ) -> None:
     tenant = _get_tenant_or_404(db, tenant_id)
-    service.delete_tenant(db, tenant)
+    try:
+        service.delete_tenant(db, tenant)
+    except TenantHasAuditJobsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cannot delete tenant '{tenant.tenant_name}': {exc.job_count} audit job(s) "
+                "still reference it. Delete those audit jobs first, or keep the tenant for "
+                "historical reporting."
+            ),
+        ) from exc
+
+
+@router.get("/{tenant_id}/available-accounts", response_model=list[AvailableAccountResponse])
+async def get_available_accounts(
+    tenant_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role(ADMIN)),
+) -> list[AvailableAccountResponse]:
+    tenant = _get_tenant_or_404(db, tenant_id)
+    try:
+        accounts = await discover_available_accounts(tenant, db)
+    except UnsupportedProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)
+        ) from exc
+    except DelegatedAuthRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=build_delegated_auth_detail(exc.tenant_id, exc.provider),
+        ) from exc
+    return [
+        AvailableAccountResponse(
+            external_id=a.external_id, display_name=a.display_name, already_added=a.already_added
+        )
+        for a in accounts
+    ]
 
 
 @router.post(

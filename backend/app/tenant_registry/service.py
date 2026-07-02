@@ -2,8 +2,19 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.models.audit_job import AuditJob
 from app.models.cloud_tenant import CloudScope, CloudTenant
 from app.schemas.tenant import ScopeCreate, TenantCreate, TenantUpdate
+
+
+class TenantHasAuditJobsError(Exception):
+    """Raised when deleting a tenant that still has audit jobs referencing
+    it - audit history is never cascade-deleted, so the caller must resolve
+    this explicitly rather than silently losing records."""
+
+    def __init__(self, job_count: int):
+        self.job_count = job_count
+        super().__init__(f"Tenant has {job_count} audit job(s) referencing it")
 
 
 def create_tenant(db: Session, payload: TenantCreate, created_by: uuid.UUID) -> CloudTenant:
@@ -34,6 +45,9 @@ def update_tenant(db: Session, tenant: CloudTenant, payload: TenantUpdate) -> Cl
 
 
 def delete_tenant(db: Session, tenant: CloudTenant) -> None:
+    job_count = db.query(AuditJob).filter(AuditJob.tenant_id == tenant.id).count()
+    if job_count > 0:
+        raise TenantHasAuditJobsError(job_count)
     db.delete(tenant)
     db.commit()
 

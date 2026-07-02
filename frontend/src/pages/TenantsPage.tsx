@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import {
   Accordion,
   AccordionDetails,
@@ -6,32 +7,51 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   List,
   ListItem,
   ListItemText,
   MenuItem,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
+import SyncIcon from "@mui/icons-material/Sync";
 import {
   createScope,
   createTenant,
   deleteTenant,
+  getAvailableAccounts,
   listScopes,
   listTenants,
   type ScopeCreatePayload,
   type TenantCreatePayload,
 } from "../api/tenants";
-import type { CloudAuthMode, CloudProvider, Scope, ScopeType, Tenant } from "../api/types";
+import type {
+  AvailableAccount,
+  CloudAuthMode,
+  CloudProvider,
+  Scope,
+  ScopeType,
+  Tenant,
+} from "../api/types";
+
+const ACCOUNT_SYNC_SUPPORTED: Record<CloudProvider, boolean> = {
+  aws: true,
+  azure: true,
+  gcp: false,
+  oci: false,
+};
 
 const PROVIDERS: { value: CloudProvider; label: string }[] = [
   { value: "aws", label: "AWS" },
@@ -60,6 +80,12 @@ function TenantScopes({ tenantId, provider }: { tenantId: string; provider: Clou
   const [displayName, setDisplayName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [availableAccounts, setAvailableAccounts] = useState<AvailableAccount[]>([]);
+  const [selectedExternalIds, setSelectedExternalIds] = useState<string[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isAddingSelected, setIsAddingSelected] = useState(false);
+
   function reload() {
     listScopes(tenantId)
       .then(setScopes)
@@ -85,6 +111,49 @@ function TenantScopes({ tenantId, provider }: { tenantId: string; provider: Clou
       setError("Failed to create scope.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleOpenSync() {
+    setSyncDialogOpen(true);
+    setIsSyncing(true);
+    setError(null);
+    try {
+      const accounts = await getAvailableAccounts(tenantId);
+      setAvailableAccounts(accounts);
+      setSelectedExternalIds(accounts.filter((a) => !a.already_added).map((a) => a.external_id));
+    } catch (err) {
+      const message = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
+      setError(typeof message === "string" ? message : "Failed to discover accounts.");
+      setSyncDialogOpen(false);
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  function toggleSelectedAccount(externalId: string) {
+    setSelectedExternalIds((prev) =>
+      prev.includes(externalId) ? prev.filter((id) => id !== externalId) : [...prev, externalId],
+    );
+  }
+
+  async function handleAddSelectedAccounts() {
+    setIsAddingSelected(true);
+    try {
+      const toAdd = availableAccounts.filter((a) => selectedExternalIds.includes(a.external_id));
+      for (const account of toAdd) {
+        await createScope(tenantId, {
+          scope_type: SCOPE_TYPES_BY_PROVIDER[provider],
+          external_scope_id: account.external_id,
+          display_name: account.display_name,
+        });
+      }
+      setSyncDialogOpen(false);
+      reload();
+    } catch {
+      setError("Failed to add one or more accounts.");
+    } finally {
+      setIsAddingSelected(false);
     }
   }
 
@@ -115,9 +184,77 @@ function TenantScopes({ tenantId, provider }: { tenantId: string; provider: Clou
           </Typography>
         )}
       </List>
-      <Button size="small" onClick={() => setDialogOpen(true)} sx={{ mt: 1 }}>
-        Add {SCOPE_TYPES_BY_PROVIDER[provider]}
-      </Button>
+      <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+        <Button size="small" onClick={() => setDialogOpen(true)}>
+          Add {SCOPE_TYPES_BY_PROVIDER[provider]}
+        </Button>
+        <Tooltip
+          title={
+            ACCOUNT_SYNC_SUPPORTED[provider]
+              ? "Check the cloud provider for accounts not yet registered"
+              : `Account sync isn't supported for ${provider.toUpperCase()} yet`
+          }
+        >
+          <span>
+            <Button
+              size="small"
+              startIcon={<SyncIcon fontSize="small" />}
+              onClick={handleOpenSync}
+              disabled={!ACCOUNT_SYNC_SUPPORTED[provider]}
+            >
+              Sync Accounts
+            </Button>
+          </span>
+        </Tooltip>
+      </Box>
+
+      <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Sync Accounts</DialogTitle>
+        <DialogContent>
+          {isSyncing && <Typography variant="body2">Checking cloud provider...</Typography>}
+          {!isSyncing && availableAccounts.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              No accounts found under this tenant.
+            </Typography>
+          )}
+          {!isSyncing && availableAccounts.length > 0 && (
+            <List dense>
+              {availableAccounts.map((account) => (
+                <ListItem key={account.external_id} disablePadding>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selectedExternalIds.includes(account.external_id)}
+                        disabled={account.already_added}
+                        onChange={() => toggleSelectedAccount(account.external_id)}
+                      />
+                    }
+                    label={
+                      <ListItemText
+                        primary={account.display_name}
+                        secondary={account.external_id}
+                      />
+                    }
+                  />
+                  {account.already_added && (
+                    <Chip label="already added" size="small" sx={{ ml: 1 }} />
+                  )}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSyncDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddSelectedAccounts}
+            disabled={isSyncing || isAddingSelected || selectedExternalIds.length === 0}
+          >
+            Add Selected
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add {SCOPE_TYPES_BY_PROVIDER[provider]}</DialogTitle>
@@ -162,6 +299,9 @@ export function TenantsPage() {
   const [tenantName, setTenantName] = useState("");
   const [externalTenantId, setExternalTenantId] = useState("");
   const [authMode, setAuthMode] = useState<CloudAuthMode>("delegated");
+  const [ssoLoginUrl, setSsoLoginUrl] = useState("");
+  const [appRegistrationClientId, setAppRegistrationClientId] = useState("");
+  const [appRegistrationTenantId, setAppRegistrationTenantId] = useState("");
 
   function reload() {
     listTenants()
@@ -179,11 +319,19 @@ export function TenantsPage() {
         tenant_name: tenantName,
         external_tenant_id: externalTenantId,
         auth_mode: authMode,
+        ...(authMode === "delegated" && {
+          sso_login_url: ssoLoginUrl || null,
+          app_registration_client_id: appRegistrationClientId || null,
+          app_registration_tenant_id: appRegistrationTenantId || null,
+        }),
       };
       await createTenant(payload);
       setDialogOpen(false);
       setTenantName("");
       setExternalTenantId("");
+      setSsoLoginUrl("");
+      setAppRegistrationClientId("");
+      setAppRegistrationTenantId("");
       reload();
     } catch {
       setError("Failed to create tenant.");
@@ -196,8 +344,9 @@ export function TenantsPage() {
     try {
       await deleteTenant(tenantId);
       reload();
-    } catch {
-      setError("Failed to delete tenant. It may still have audit jobs referencing it.");
+    } catch (err) {
+      const message = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
+      setError(typeof message === "string" ? message : "Failed to delete tenant.");
     }
   }
 
@@ -308,6 +457,46 @@ export function TenantsPage() {
               </MenuItem>
             ))}
           </TextField>
+
+          {authMode === "delegated" && (
+            <>
+              <Divider />
+              <Typography variant="subtitle2">SSO Sign-In Details</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Used to authenticate this specific tenant via a popup SSO login for account sync
+                and audit jobs — separate from your NAVIXA login.
+              </Typography>
+              <TextField
+                label={provider === "aws" ? "IAM Identity Center Start URL" : "SSO Login URL"}
+                placeholder={
+                  provider === "aws"
+                    ? "https://d-xxxxxxxxxx.awsapps.com/start"
+                    : "https://login.microsoftonline.com/..."
+                }
+                value={ssoLoginUrl}
+                onChange={(e) => setSsoLoginUrl(e.target.value)}
+                fullWidth
+              />
+              {provider === "azure" && (
+                <>
+                  <TextField
+                    label="App Registration Client ID (optional)"
+                    helperText="Leave blank to use NAVIXA's shared app registration"
+                    value={appRegistrationClientId}
+                    onChange={(e) => setAppRegistrationClientId(e.target.value)}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Entra Tenant ID for this app registration (optional)"
+                    helperText="Defaults to the External Tenant ID above"
+                    value={appRegistrationTenantId}
+                    onChange={(e) => setAppRegistrationTenantId(e.target.value)}
+                    fullWidth
+                  />
+                </>
+              )}
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>

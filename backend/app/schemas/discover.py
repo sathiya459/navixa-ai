@@ -40,6 +40,17 @@ class JobStatusResponse(BaseModel):
     scopes: list[ScopeStatusResponse]
 
 
+class AuditJobListItem(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    tenant_name: str
+    status: str
+    created_at: datetime
+    scope_count: int
+
+    model_config = {"from_attributes": True}
+
+
 class NetworkResourceResponse(BaseModel):
     id: uuid.UUID
     resource_type: str

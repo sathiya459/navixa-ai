@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     app_name: str = "NAVIXA AI"
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
+    # Used to build delegated-auth popup callback URLs
+    # (app/api/v1/delegated_auth.py) when a tenant doesn't supply its own
+    # app_registration_redirect_uri.
+    backend_public_base_url: str = "http://localhost:8000"
 
     # PostgreSQL (navixa_db)
     database_url: str = "postgresql+psycopg://navixa:navixa@localhost:5432/navixa_db"
@@ -120,6 +124,11 @@ class Settings(BaseSettings):
     aws_secrets_manager_region: str = "us-east-1"
     azure_key_vault_url: str | None = None
 
+    # Encrypts CloudTenant.delegated_token_cache (MSAL caches, AWS SSO OIDC
+    # sessions) at rest - see app/auth/token_encryption.py. A Fernet key,
+    # generated once and stored in Key Vault, never in code/.env.
+    delegated_token_encryption_key: str | None = None
+
     # Celery worker scaling (Section 20 Phase 5 "Scaling"). Concurrency is
     # per-worker-process; horizontal scale-out is achieved by running more
     # worker containers/replicas (see docker-compose.yml comments), not by
@@ -143,6 +152,7 @@ _SECRET_FIELD_MAP: dict[str, str] = {
     "gemini_api_key": "navixa-gemini-api-key",
     "azure_federation_client_secret": "navixa-azure-federation-client-secret",
     "aws_audit_external_id": "navixa-aws-audit-external-id",
+    "delegated_token_encryption_key": "navixa-delegated-token-encryption-key",
 }
 
 

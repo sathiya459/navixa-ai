@@ -16,11 +16,14 @@ from app.collectors.aws.subnet import collect_subnets
 from app.collectors.aws.vpc import collect_vpcs as collect_networks
 from app.collectors.base import CollectionResult
 from app.config.rate_limits import AWS_RATE_LIMITS
+from app.models.cloud_tenant import CloudTenant
 
 
-async def discover_aws_scope(external_scope_id: str, region: str) -> list[CollectionResult]:
+async def discover_aws_scope(
+    tenant: CloudTenant, external_scope_id: str, region: str
+) -> list[CollectionResult]:
     """Fan out all AWS resource-type collectors for one account, concurrently."""
-    creds = await assume_role_for_scope(external_scope_id, region)
+    creds = await assume_role_for_scope(tenant, external_scope_id, region)
     session = get_async_session(creds, region)
 
     semaphores = {
@@ -50,7 +53,7 @@ async def discover_aws_scope(external_scope_id: str, region: str) -> list[Collec
 
 
 async def discover_aws_scopes(
-    scopes: list[tuple[str, str]], max_parallel_scopes: int = 5
+    tenant: CloudTenant, scopes: list[tuple[str, str]], max_parallel_scopes: int = 5
 ) -> dict[str, list[CollectionResult]]:
     """Fan out discovery across multiple AWS accounts concurrently.
 
@@ -61,7 +64,7 @@ async def discover_aws_scopes(
 
     async def _run_scope(external_scope_id: str, region: str):
         async with scope_semaphore:
-            return external_scope_id, await discover_aws_scope(external_scope_id, region)
+            return external_scope_id, await discover_aws_scope(tenant, external_scope_id, region)
 
     results = await asyncio.gather(
         *(_run_scope(scope_id, region) for scope_id, region in scopes)
