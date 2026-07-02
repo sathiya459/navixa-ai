@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_role
 from app.collectors.job_service import get_audit_job
 from app.database.session import get_db
-from app.hub_spoke_validator.service import list_findings, run_validation
+from app.hub_spoke_validator.service import list_findings, run_ai_validation, run_validation
 from app.models.role import ADMIN, AUDITOR, VIEWER
 from app.models.user import User
 from app.schemas.validate import FindingResponse, ValidateRunRequest
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/validate", tags=["Validate"])
 
 
 @router.post("/jobs/{job_id}/run", status_code=status.HTTP_202_ACCEPTED)
-def run_validate(
+async def run_validate(
     job_id: uuid.UUID,
     payload: ValidateRunRequest,
     db: Session = Depends(get_db),
@@ -25,8 +25,15 @@ def run_validate(
     if audit_job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    run_validation(db, audit_job, payload.hub_ids)
-    return {"status": audit_job.status}
+    if payload.analysis_mode == "ai":
+        try:
+            await run_ai_validation(db, audit_job, payload.hub_ids, payload.provider)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    else:
+        run_validation(db, audit_job, payload.hub_ids)
+
+    return {"status": audit_job.status, "analysis_mode": payload.analysis_mode}
 
 
 @router.get("/jobs/{job_id}/results", response_model=list[FindingResponse])

@@ -1,10 +1,20 @@
 import { apiClient } from "./client";
-import type { Finding } from "./types";
+import type { AIProviderName, AnalysisMode, Finding } from "./types";
 
-export async function runValidation(jobId: string, hubIds: string[]): Promise<{ status: string }> {
-  const { data } = await apiClient.post<{ status: string }>(`/validate/jobs/${jobId}/run`, {
-    hub_ids: hubIds,
-  });
+export async function runValidation(
+  jobId: string,
+  hubIds: string[],
+  analysisMode: AnalysisMode = "rule_engine",
+  provider?: AIProviderName,
+): Promise<{ status: string; analysis_mode: AnalysisMode }> {
+  const { data } = await apiClient.post<{ status: string; analysis_mode: AnalysisMode }>(
+    `/validate/jobs/${jobId}/run`,
+    {
+      hub_ids: hubIds,
+      analysis_mode: analysisMode,
+      provider,
+    },
+  );
   return data;
 }
 

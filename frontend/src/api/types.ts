@@ -87,11 +87,19 @@ export interface NetworkResource {
 }
 
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "informational";
+export type AnalysisMode = "rule_engine" | "ai";
+export type AIProviderName = "claude" | "openai" | "azure_openai" | "gemini" | "bedrock";
+
+export interface AIProviderStatus {
+  provider: AIProviderName;
+  available: boolean;
+  configured: boolean;
+}
 
 export interface Finding {
   id: string;
   audit_job_id: string;
-  module: "validate" | "pathfinder";
+  module: "validate" | "pathfinder" | "ai_analysis";
   finding_type: string;
   severity: FindingSeverity;
   title: string;
