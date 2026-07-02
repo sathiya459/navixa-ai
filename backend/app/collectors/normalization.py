@@ -21,6 +21,13 @@ _ID_KEYS_BY_PROVIDER: dict[str, dict[str, str]] = {
         "security_group": "id",
         "peering_connection": "id",
     },
+    "gcp": {
+        "network": "selfLink",
+        "subnet": "selfLink",
+        "route_table": "selfLink",
+        "security_group": "selfLink",
+        "peering_connection": "name",
+    },
 }
 
 
