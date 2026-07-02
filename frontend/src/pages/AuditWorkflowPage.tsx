@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -32,6 +33,7 @@ const STEPS = [
 ];
 
 export function AuditWorkflowPage() {
+  const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState("");
@@ -76,15 +78,16 @@ export function AuditWorkflowPage() {
     );
   }
 
+  const parsedHubIds = hubIdsInput
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
   async function handleRunDiscovery() {
     setIsLoading(true);
     setError(null);
     try {
-      const hubIds = hubIdsInput
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
-      const job = await createAuditJob(selectedTenantId, selectedScopeIds, hubIds);
+      const job = await createAuditJob(selectedTenantId, selectedScopeIds, parsedHubIds);
       setJobId(job.id);
       setActiveStep(3);
     } catch {
@@ -99,11 +102,7 @@ export function AuditWorkflowPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const hubIds = hubIdsInput
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
-      await runValidation(jobId, hubIds);
+      await runValidation(jobId, parsedHubIds);
       const results = await getFindings(jobId);
       setFindings(results);
       setActiveStep(4);
@@ -256,6 +255,13 @@ export function AuditWorkflowPage() {
                 onClick={handleRunValidation}
               >
                 {isLoading ? "Running..." : "Run NAVIXA Validate"}
+              </Button>
+              <Button
+                variant="outlined"
+                disabled={!discoveryDone || !jobId}
+                onClick={() => navigate(`/audits/${jobId}/topology`, { state: { hubIds: parsedHubIds } })}
+              >
+                View NAVIXA Topology
               </Button>
             </Box>
           </Box>

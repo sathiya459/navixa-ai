@@ -5,6 +5,7 @@ import { DashboardLayout } from "./components/DashboardLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardHomePage } from "./pages/DashboardHomePage";
 import { AuditWorkflowPage } from "./pages/AuditWorkflowPage";
+import { TopologyPage } from "./pages/TopologyPage";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<DashboardHomePage />} />
               <Route path="/audits/new" element={<AuditWorkflowPage />} />
+              <Route path="/audits/:jobId/topology" element={<TopologyPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
