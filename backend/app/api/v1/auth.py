@@ -88,24 +88,31 @@ def entra_login() -> RedirectResponse:
     return RedirectResponse(get_authorization_url(state))
 
 
-@router.get("/sso/entra/callback", response_model=TokenResponse)
-def entra_callback(code: str, db: Session = Depends(get_db)) -> TokenResponse:
+@router.get("/sso/entra/callback")
+def entra_callback(code: str, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Redirects back into the SPA with tokens in the URL fragment (never a
+    query string, so they aren't captured in server access logs or
+    Referer headers) rather than returning JSON directly - the browser
+    navigated here via a full-page redirect from Entra, so JSON in the
+    response would just be displayed raw instead of landing the user back
+    in the app. On failure, redirects with an `error` fragment instead of
+    raising, since there's no SPA route mounted to render an HTTPException.
+    """
     if not is_entra_configured():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Entra ID SSO is not configured on this deployment",
-        )
+        return RedirectResponse(f"{settings.frontend_sso_redirect_url}#error=sso_not_configured")
 
     token_result = acquire_token_by_authorization_code(code)
     claims = token_result.get("id_token_claims")
     if claims is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=token_result.get("error_description", "Entra ID sign-in failed"),
-        )
+        error = token_result.get("error_description", "sso_failed")
+        return RedirectResponse(f"{settings.frontend_sso_redirect_url}#error={error}")
 
     user = get_or_create_entra_user(db, claims)
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+        return RedirectResponse(f"{settings.frontend_sso_redirect_url}#error=account_disabled")
 
-    return _issue_tokens(user)
+    tokens = _issue_tokens(user)
+    return RedirectResponse(
+        f"{settings.frontend_sso_redirect_url}"
+        f"#access_token={tokens.access_token}&refresh_token={tokens.refresh_token}"
+    )

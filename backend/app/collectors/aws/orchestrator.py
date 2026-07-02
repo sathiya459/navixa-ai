@@ -21,7 +21,7 @@ from app.config.rate_limits import AWS_RATE_LIMITS
 async def discover_aws_scope(external_scope_id: str, region: str) -> list[CollectionResult]:
     """Fan out all AWS resource-type collectors for one account, concurrently."""
     creds = await assume_role_for_scope(external_scope_id, region)
-    session = get_async_session(creds)
+    session = get_async_session(creds, region)
 
     semaphores = {
         resource_type: asyncio.Semaphore(limit)
