@@ -60,6 +60,30 @@ class Settings(BaseSettings):
     entra_client_secret: str | None = None
     entra_redirect_uri: str = "http://localhost:8000/api/v1/auth/sso/entra/callback"
 
+    # Cloud federation for NAVIXA Discover (Section 8, Phase 5). Each
+    # provider falls back to Phase 1/2's stub credentials when its
+    # federation config is unset, so local dev without real cloud accounts
+    # keeps working unchanged.
+    aws_audit_role_name: str = "NavixaAuditRole"
+    aws_audit_external_id: str | None = None
+
+    azure_federation_tenant_id: str | None = None
+    azure_federation_client_id: str | None = None
+    azure_federation_client_secret: str | None = None
+
+    # GCP Workforce Identity Federation is normally a full OIDC token
+    # exchange against GCP's STS endpoint; this implements the common
+    # simplified equivalent - impersonating a fixed audit service account
+    # per project - and documents that as a deliberate scope reduction,
+    # not a misunderstanding of WIF.
+    gcp_audit_service_account: str | None = None
+
+    # OCI Federation / Identity Domains: a session-token-based signer path
+    # (federated) when a session token is available, else instance
+    # principal auth for workloads already running on OCI compute.
+    oci_session_token_path: str | None = None
+    oci_config_profile: str = "DEFAULT"
+
 
 @lru_cache
 def get_settings() -> Settings:
