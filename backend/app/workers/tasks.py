@@ -9,11 +9,15 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import Session
+
 from app.collectors.discover_service import run_discovery_for_scope
 from app.config.rate_limits import MAX_PARALLEL_SCOPES
 from app.database.session import SessionLocal
+from app.graph_engine.writer import GraphResourceInput, sync_job_to_graph
 from app.models.audit_job import AuditJob, AuditJobScope
 from app.models.cloud_tenant import CloudScope, CloudTenant
+from app.models.network_resource import NetworkResource
 from app.workers.celery_app import celery_app
 
 
@@ -56,8 +60,49 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
         await asyncio.gather(*(_run_one(js) for js in job_scopes), return_exceptions=True)
 
         statuses = {js.status for js in job_scopes}
-        audit_job.status = "completed" if statuses == {"success"} else "partial"
+
+        if "success" in statuses or "partial" in statuses:
+            audit_job.status = "graphing"
+            db.commit()
+            _sync_graph(db, audit_job_id)
+
+        if statuses == {"success"}:
+            audit_job.status = "completed"
+        elif statuses == {"failed"}:
+            audit_job.status = "failed"
+        else:
+            audit_job.status = "partial"
         audit_job.completed_at = datetime.now(timezone.utc)
         db.commit()
     finally:
         db.close()
+
+
+def _sync_graph(db: Session, audit_job_id: uuid.UUID) -> None:
+    """Mirrors this job's normalized inventory into navixa_graph (Neo4j).
+
+    Best-effort: a graph sync failure degrades the job to "partial" rather
+    than failing it outright, since the relational data (findings' source
+    of truth) is already durably persisted at this point.
+    """
+    resources = (
+        db.query(NetworkResource)
+        .join(AuditJobScope, NetworkResource.audit_job_scope_id == AuditJobScope.id)
+        .filter(AuditJobScope.audit_job_id == audit_job_id)
+        .all()
+    )
+    graph_inputs = [
+        GraphResourceInput(
+            id=r.id,
+            resource_type=r.resource_type,
+            provider=r.provider,
+            native_id=r.native_id,
+            name=r.name,
+            attributes=r.attributes,
+        )
+        for r in resources
+    ]
+    try:
+        sync_job_to_graph(graph_inputs, audit_job_id)
+    except Exception:  # noqa: BLE001
+        pass
