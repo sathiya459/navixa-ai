@@ -6,6 +6,10 @@ from sqlalchemy import engine_from_config, pool
 from app.config.settings import get_settings
 from app.database.base import Base
 
+# Import models so Base.metadata is populated for autogenerate.
+from app.models import role as _role  # noqa: F401
+from app.models import user as _user  # noqa: F401
+
 config = context.config
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
