@@ -23,7 +23,6 @@ import {
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlined";
 import CableIcon from "@mui/icons-material/Cable";
 import LogoutIcon from "@mui/icons-material/Logout";
 import HubIcon from "@mui/icons-material/Hub";
@@ -37,7 +36,6 @@ const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: <DashboardOutlinedIcon fontSize="small" />, adminOnly: false },
   { label: "Tenants", path: "/tenants", icon: <BusinessOutlinedIcon fontSize="small" />, adminOnly: false },
   { label: "Audit Jobs", path: "/audits", icon: <AssignmentOutlinedIcon fontSize="small" />, adminOnly: false },
-  { label: "New Audit", path: "/audits/new", icon: <AddCircleOutlineIcon fontSize="small" />, adminOnly: true },
   { label: "Connections", path: "/connections", icon: <CableIcon fontSize="small" />, adminOnly: true },
 ];
 
