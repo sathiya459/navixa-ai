@@ -18,6 +18,7 @@ import {
   ListItemText,
   MenuItem,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -34,6 +35,10 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SyncIcon from "@mui/icons-material/Sync";
+import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
+import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
+import DomainDisabledOutlinedIcon from "@mui/icons-material/DomainDisabledOutlined";
+import CloudQueueIcon from "@mui/icons-material/CloudQueue";
 import { useAuth } from "../auth/AuthContext";
 import { useEnvironment } from "../auth/EnvironmentContext";
 import {
@@ -181,52 +186,71 @@ function TenantScopesRows({
     }
   }
 
+  const scopeLabel = SCOPE_TYPES_BY_PROVIDER[provider];
+  const scopeLabelCap = scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1);
+
   return (
-    <Box sx={{ py: 2, px: 4, bgcolor: "action.hover" }}>
+    <Box
+      sx={{
+        py: 2.5,
+        px: 3,
+        ml: { xs: 0, sm: 6 },
+        mr: 2,
+        mb: 2,
+        bgcolor: "background.default",
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: "divider",
+      }}
+    >
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {SCOPE_TYPES_BY_PROVIDER[provider].charAt(0).toUpperCase() +
-          SCOPE_TYPES_BY_PROVIDER[provider].slice(1)}
-        s
-      </Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
+        <LayersOutlinedIcon fontSize="small" color="action" />
+        <Typography variant="subtitle2">{scopeLabelCap}s</Typography>
+        <Chip label={scopes.length} size="small" sx={{ height: 20, fontSize: "0.7rem" }} />
+      </Stack>
       {scopes.length > 0 ? (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>External ID</TableCell>
-              <TableCell>Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {scopes.map((scope) => (
-              <TableRow key={scope.id}>
-                <TableCell>{scope.display_name}</TableCell>
-                <TableCell>{scope.external_scope_id}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={scope.is_active ? "active" : "inactive"}
-                    size="small"
-                    color={scope.is_active ? "success" : "default"}
-                  />
-                </TableCell>
+        <TableContainer component={Paper} variant="outlined" sx={{ mb: 1.5 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>External ID</TableCell>
+                <TableCell>Status</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {scopes.map((scope) => (
+                <TableRow key={scope.id}>
+                  <TableCell>{scope.display_name}</TableCell>
+                  <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                    {scope.external_scope_id}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={scope.is_active ? "active" : "inactive"}
+                      size="small"
+                      color={scope.is_active ? "success" : "default"}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       ) : (
-        <Typography variant="body2" color="text.secondary">
-          No {SCOPE_TYPES_BY_PROVIDER[provider]}s added yet.
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          No {scopeLabel}s added yet.
         </Typography>
       )}
       {isAdmin && (
-        <Box sx={{ display: "flex", gap: 1, mt: 1.5 }}>
+        <Stack direction="row" spacing={1}>
           <Button size="small" onClick={() => setDialogOpen(true)}>
-            Add {SCOPE_TYPES_BY_PROVIDER[provider]}
+            Add {scopeLabel}
           </Button>
           <Tooltip
             title={
@@ -246,7 +270,7 @@ function TenantScopesRows({
               </Button>
             </span>
           </Tooltip>
-        </Box>
+        </Stack>
       )}
 
       <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -298,7 +322,7 @@ function TenantScopesRows({
       </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add {SCOPE_TYPES_BY_PROVIDER[provider]}</DialogTitle>
+        <DialogTitle>Add {scopeLabel}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           <TextField
             label="External ID"
@@ -343,14 +367,41 @@ function TenantRow({
 
   return (
     <>
-      <TableRow hover>
+      <TableRow
+        hover
+        onClick={() => setExpanded((v) => !v)}
+        sx={{ cursor: "pointer", bgcolor: expanded ? "action.selected" : undefined }}
+      >
         <TableCell width={48}>
-          <IconButton size="small" onClick={() => setExpanded((v) => !v)}>
+          <IconButton size="small">
             {expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
-        <TableCell>{tenant.tenant_name}</TableCell>
-        <TableCell>{tenant.external_tenant_id}</TableCell>
+        <TableCell>
+          <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: 1.5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                bgcolor: "rgba(11, 61, 145, 0.08)",
+                color: "primary.main",
+                flexShrink: 0,
+              }}
+            >
+              <BusinessOutlinedIcon fontSize="small" />
+            </Box>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {tenant.tenant_name}
+            </Typography>
+          </Stack>
+        </TableCell>
+        <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem", color: "text.secondary" }}>
+          {tenant.external_tenant_id}
+        </TableCell>
         <TableCell>
           <Chip
             label={tenant.auth_mode === "delegated" ? "Delegated (SSO)" : "App-only"}
@@ -358,7 +409,7 @@ function TenantRow({
             variant="outlined"
           />
         </TableCell>
-        <TableCell align="right">
+        <TableCell align="right" onClick={(e) => e.stopPropagation()}>
           {isAdmin && (
             <IconButton size="small" onClick={() => onDelete(tenant.id)}>
               <DeleteIcon fontSize="small" />
@@ -563,63 +614,84 @@ export function TenantsPage() {
     }
   }
 
+  const activeProviderLabel = PROVIDERS.find((p) => p.value === activeProvider)?.label;
+
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-        <Typography variant="h4">Tenant Registry</Typography>
+      <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Tenant Registry
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Cloud tenants and their subscriptions/accounts, grouped by provider for the{" "}
+            <strong>{environment}</strong> environment.
+          </Typography>
+        </Box>
         {isAdmin && (
-          <Button variant="contained" onClick={handleAddClick}>
+          <Button variant="contained" onClick={handleAddClick} sx={{ flexShrink: 0 }}>
             Add Tenant
           </Button>
         )}
-      </Box>
+      </Stack>
 
-      <Tabs
-        value={activeProvider}
-        onChange={(_e, value: CloudProvider) => setActiveProvider(value)}
-        sx={{ mb: 2 }}
-      >
-        {PROVIDERS.map((p) => (
-          <Tab key={p.value} value={p.value} label={p.label} />
-        ))}
-      </Tabs>
+      <Paper variant="outlined" sx={{ mb: 3 }}>
+        <Tabs
+          value={activeProvider}
+          onChange={(_e, value: CloudProvider) => setActiveProvider(value)}
+          sx={{ px: 1, borderBottom: "1px solid", borderColor: "divider" }}
+        >
+          {PROVIDERS.map((p) => (
+            <Tab key={p.value} value={p.value} label={p.label} icon={<CloudQueueIcon fontSize="small" />} iconPosition="start" sx={{ minHeight: 48 }} />
+          ))}
+        </Tabs>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
+        <Box sx={{ p: tenants.length === 0 ? 0 : 2 }}>
+          {error && (
+            <Alert severity="error" sx={{ m: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
 
-      {tenants.length === 0 ? (
-        <Alert severity="info">
-          No {PROVIDERS.find((p) => p.value === activeProvider)?.label} tenants registered for the{" "}
-          {environment} environment yet.
-        </Alert>
-      ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell width={48} />
-                <TableCell>Tenant Name</TableCell>
-                <TableCell>External Tenant ID</TableCell>
-                <TableCell>Auth Mode</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {tenants.map((tenant) => (
-                <TenantRow
-                  key={tenant.id}
-                  tenant={tenant}
-                  isAdmin={isAdmin}
-                  onDelete={handleDeleteTenant}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+          {tenants.length === 0 ? (
+            <Stack spacing={1.5} sx={{ alignItems: "center", py: 8, px: 3 }}>
+              <DomainDisabledOutlinedIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+              <Typography variant="body1" color="text.secondary" sx={{ textAlign: "center" }}>
+                No {activeProviderLabel} tenants registered for the {environment} environment yet.
+              </Typography>
+              {isAdmin && (
+                <Button variant="outlined" size="small" onClick={handleAddClick}>
+                  Add {activeProviderLabel} Tenant
+                </Button>
+              )}
+            </Stack>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell width={48} />
+                    <TableCell>Tenant Name</TableCell>
+                    <TableCell>External Tenant ID</TableCell>
+                    <TableCell>Auth Mode</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {tenants.map((tenant) => (
+                    <TenantRow
+                      key={tenant.id}
+                      tenant={tenant}
+                      isAdmin={isAdmin}
+                      onDelete={handleDeleteTenant}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      </Paper>
 
       <AzureImportDialog
         open={azureDialogOpen}
@@ -629,7 +701,7 @@ export function TenantsPage() {
       />
 
       <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add {PROVIDERS.find((p) => p.value === activeProvider)?.label} Tenant</DialogTitle>
+        <DialogTitle>Add {activeProviderLabel} Tenant</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           <TextField
             label="Tenant Name"
