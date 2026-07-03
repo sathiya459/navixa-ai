@@ -62,6 +62,7 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
 
         max_parallel = MAX_PARALLEL_SCOPES.get(tenant.provider, 5)
         semaphore = asyncio.Semaphore(max_parallel)
+        resource_types = (audit_job.resource_types or {}).get("types")
 
         async def _run_one(job_scope: AuditJobScope):
             cloud_scope = db.get(CloudScope, job_scope.cloud_scope_id)
@@ -72,6 +73,7 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
                     tenant,
                     cloud_scope.external_scope_id,
                     region=region,
+                    resource_types=resource_types,
                 )
 
         await asyncio.gather(*(_run_one(js) for js in job_scopes), return_exceptions=True)

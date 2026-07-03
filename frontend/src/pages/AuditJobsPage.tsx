@@ -11,6 +11,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Grid,
   IconButton,
   Paper,
   Stack,
@@ -25,10 +26,42 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlined";
+import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
+import PendingActionsOutlinedIcon from "@mui/icons-material/PendingActionsOutlined";
 import { useAuth } from "../auth/AuthContext";
 import { deleteAuditJob, getJobStatus, listAuditJobs } from "../api/discover";
 import { listScopes } from "../api/tenants";
 import type { AuditJobListItem, AuditJobStatus, JobStatus, Scope } from "../api/types";
+
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2.5, display: "flex", alignItems: "center", gap: 2 }}>
+      <Box
+        sx={{
+          width: 44,
+          height: 44,
+          borderRadius: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "rgba(11, 61, 145, 0.08)",
+          color: "primary.main",
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </Box>
+      <Box>
+        <Typography variant="h5">{value}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {label}
+        </Typography>
+      </Box>
+    </Paper>
+  );
+}
 
 const STATUS_COLOR: Record<AuditJobStatus, "default" | "success" | "warning" | "error" | "info"> = {
   queued: "default",
@@ -223,14 +256,45 @@ export function AuditJobsPage() {
     }
   }
 
+  const completedCount = jobs.filter((j) => j.status === "completed").length;
+  const runningCount = jobs.filter(
+    (j) => !["completed", "failed", "partial"].includes(j.status),
+  ).length;
+
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Audit Jobs
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        History of NAVIXA Discover / Validate runs across all tenants.
-      </Typography>
+      <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Audit Jobs
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            History of NAVIXA Discover / Validate runs across all tenants.
+          </Typography>
+        </Box>
+        {isAdmin && (
+          <Button
+            variant="contained"
+            startIcon={<AddCircleOutlineIcon />}
+            onClick={() => navigate("/audits/new")}
+            sx={{ flexShrink: 0 }}
+          >
+            New Audit
+          </Button>
+        )}
+      </Stack>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <StatCard icon={<AssignmentOutlinedIcon />} label="Total Jobs" value={jobs.length} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <StatCard icon={<CheckCircleOutlineIcon />} label="Completed" value={completedCount} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <StatCard icon={<PendingActionsOutlinedIcon />} label="In Progress" value={runningCount} />
+        </Grid>
+      </Grid>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -238,20 +302,29 @@ export function AuditJobsPage() {
         </Alert>
       )}
 
-      {jobs.length === 0 && !error && (
-        <Alert severity="info">No audit jobs yet. Start one from "New Audit".</Alert>
-      )}
-
-      {jobs.length > 0 && (
+      {jobs.length === 0 && !error ? (
+        <Paper variant="outlined" sx={{ py: 8, textAlign: "center" }}>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: isAdmin ? 2 : 0 }}>
+            No audit jobs yet.
+          </Typography>
+          {isAdmin && (
+            <Button variant="outlined" size="small" onClick={() => navigate("/audits/new")}>
+              Start a New Audit
+            </Button>
+          )}
+        </Paper>
+      ) : (
         <TableContainer component={Paper} variant="outlined">
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Tenant</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Scopes</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell width="30%">Tenant</TableCell>
+                <TableCell width="15%">Status</TableCell>
+                <TableCell width="10%">Scopes</TableCell>
+                <TableCell width="25%">Created</TableCell>
+                <TableCell width="20%" align="right">
+                  Actions
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

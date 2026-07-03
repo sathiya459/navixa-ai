@@ -5,11 +5,13 @@ export async function createAuditJob(
   tenantId: string,
   scopeIds: string[],
   hubSelection?: string[],
+  resourceTypes?: string[],
 ): Promise<AuditJob> {
   const { data } = await apiClient.post<AuditJob>("/discover/jobs", {
     tenant_id: tenantId,
     scope_ids: scopeIds,
     hub_selection: hubSelection,
+    resource_types: resourceTypes,
   });
   return data;
 }

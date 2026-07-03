@@ -38,6 +38,12 @@ class AuditJob(Base, UUIDPKMixin, TimestampMixin):
     )
     status: Mapped[str] = mapped_column(AuditJobStatus, default="queued", nullable=False)
     hub_selection: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Which resource types Discover should actually fetch (Section: New Job
+    # Creation Flow "Select Service/Resource Types") - e.g.
+    # {"types": ["network", "security_group"]}. Null/omitted means collect
+    # everything (today's default behavior, unchanged for scheduled
+    # discovery / AI-analysis paths that don't set this).
+    resource_types: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

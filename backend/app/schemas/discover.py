@@ -9,6 +9,7 @@ class AuditJobCreate(BaseModel):
     tenant_id: uuid.UUID
     scope_ids: list[uuid.UUID]
     hub_selection: list[str] | None = None
+    resource_types: list[str] | None = None
 
 
 class AuditJobResponse(BaseModel):

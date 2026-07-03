@@ -14,6 +14,7 @@ def create_audit_job(db: Session, payload: AuditJobCreate, initiated_by: uuid.UU
         initiated_by=initiated_by,
         status="queued",
         hub_selection={"hub_ids": payload.hub_selection} if payload.hub_selection else None,
+        resource_types={"types": payload.resource_types} if payload.resource_types else None,
     )
     db.add(audit_job)
     db.flush()

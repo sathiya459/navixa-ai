@@ -13,8 +13,23 @@ from app.config.rate_limits import AZURE_RATE_LIMITS
 from app.models.environment_connection import EnvironmentConnection
 
 
-async def discover_azure_scope(connection: EnvironmentConnection | None, external_scope_id: str) -> list[CollectionResult]:
-    """Fan out all Azure resource-type collectors for one subscription, concurrently."""
+_COLLECTORS_BY_RESOURCE_TYPE = {
+    "network": collect_vnets,
+    "subnet": collect_subnets,
+    "route_table": collect_route_tables,
+    "security_group": collect_network_security_groups,
+    "peering_connection": collect_peering_connections,
+}
+
+
+async def discover_azure_scope(
+    connection: EnvironmentConnection | None,
+    external_scope_id: str,
+    resource_types: list[str] | None = None,
+) -> list[CollectionResult]:
+    """Fan out Azure resource-type collectors for one subscription,
+    concurrently. See discover_aws_scope's docstring for `resource_types`
+    semantics - identical here."""
     credential = get_scoped_credential(connection)
     network_client = get_network_client(credential, subscription_id=external_scope_id)
 
@@ -23,17 +38,19 @@ async def discover_azure_scope(connection: EnvironmentConnection | None, externa
         for resource_type, limit in AZURE_RATE_LIMITS.items()
     }
 
+    selected_types = set(resource_types) | {"network"} if resource_types else set(
+        _COLLECTORS_BY_RESOURCE_TYPE
+    )
+
     # Both the client and the credential itself hold an aiohttp session -
     # closing only network_client (as before) leaked the credential's
     # session, surfaced by aiohttp's "Unclosed client session" warning
     # during a real discovery run.
     async with network_client, credential:
         tasks = [
-            collect_vnets(network_client, semaphores["network"]),
-            collect_subnets(network_client, semaphores["subnet"]),
-            collect_route_tables(network_client, semaphores["route_table"]),
-            collect_network_security_groups(network_client, semaphores["security_group"]),
-            collect_peering_connections(network_client, semaphores["peering_connection"]),
+            collector(network_client, semaphores[resource_type])
+            for resource_type, collector in _COLLECTORS_BY_RESOURCE_TYPE.items()
+            if resource_type in selected_types
         ]
 
         # return_exceptions=True: fault isolation across resource types (Section 10a #4).
@@ -48,14 +65,19 @@ async def discover_azure_scope(connection: EnvironmentConnection | None, externa
 
 
 async def discover_azure_scopes(
-    connection: EnvironmentConnection | None, scopes: list[str], max_parallel_scopes: int = 5
+    connection: EnvironmentConnection | None,
+    scopes: list[str],
+    max_parallel_scopes: int = 5,
+    resource_types: list[str] | None = None,
 ) -> dict[str, list[CollectionResult]]:
     """Fan out discovery across multiple Azure subscriptions concurrently."""
     scope_semaphore = asyncio.Semaphore(max_parallel_scopes)
 
     async def _run_scope(external_scope_id: str):
         async with scope_semaphore:
-            return external_scope_id, await discover_azure_scope(connection, external_scope_id)
+            return external_scope_id, await discover_azure_scope(
+                connection, external_scope_id, resource_types
+            )
 
     results = await asyncio.gather(*(_run_scope(scope_id) for scope_id in scopes))
     return dict(results)

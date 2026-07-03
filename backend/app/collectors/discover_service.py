@@ -27,15 +27,19 @@ def _overall_status(results: list[CollectionResult]) -> str:
 
 
 async def _discover_by_provider(
-    db: Session, tenant: CloudTenant, external_scope_id: str, region: str
+    db: Session,
+    tenant: CloudTenant,
+    external_scope_id: str,
+    region: str,
+    resource_types: list[str] | None,
 ) -> list[CollectionResult]:
     provider = tenant.provider
     connection = get_connection(db, tenant.environment, provider)
     try:
         if provider == "aws":
-            return await discover_aws_scope(connection, external_scope_id, region)
+            return await discover_aws_scope(connection, external_scope_id, region, resource_types)
         if provider == "azure":
-            return await discover_azure_scope(connection, external_scope_id)
+            return await discover_azure_scope(connection, external_scope_id, resource_types)
         if provider == "gcp":
             return await discover_gcp_scope(external_scope_id)
         if provider == "oci":
@@ -62,12 +66,13 @@ async def run_discovery_for_scope(
     tenant: CloudTenant,
     external_scope_id: str,
     region: str,
+    resource_types: list[str] | None = None,
 ) -> None:
     audit_job_scope.status = "running"
     audit_job_scope.started_at = datetime.now(timezone.utc)
     db.commit()
 
-    results = await _discover_by_provider(db, tenant, external_scope_id, region)
+    results = await _discover_by_provider(db, tenant, external_scope_id, region, resource_types)
 
     for result in results:
         db.add(

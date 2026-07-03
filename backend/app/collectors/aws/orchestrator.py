@@ -19,10 +19,31 @@ from app.config.rate_limits import AWS_RATE_LIMITS
 from app.models.environment_connection import EnvironmentConnection
 
 
+_COLLECTORS_BY_RESOURCE_TYPE = {
+    "network": collect_networks,
+    "subnet": collect_subnets,
+    "route_table": collect_route_tables,
+    "security_group": collect_security_groups,
+    "gateway": collect_gateways,
+    "peering_connection": collect_peering_connections,
+}
+
+
 async def discover_aws_scope(
-    connection: EnvironmentConnection | None, external_scope_id: str, region: str
+    connection: EnvironmentConnection | None,
+    external_scope_id: str,
+    region: str,
+    resource_types: list[str] | None = None,
 ) -> list[CollectionResult]:
-    """Fan out all AWS resource-type collectors for one account, concurrently."""
+    """Fan out AWS resource-type collectors for one account, concurrently.
+
+    `resource_types` restricts which collectors actually run (Section: New
+    Job Creation Flow "Select Service/Resource Types") - `None` (the
+    default, used by scheduled discovery/AI-analysis call sites that don't
+    set it) collects everything, matching prior behavior. `network` is
+    always included even if omitted, since hub designation in the Validate
+    phase requires VPC data to exist.
+    """
     creds = await assume_role_for_scope(connection, external_scope_id, region)
     session = get_async_session(creds, region)
 
@@ -31,13 +52,13 @@ async def discover_aws_scope(
         for resource_type, limit in AWS_RATE_LIMITS.items()
     }
 
+    selected_types = set(resource_types) | {"network"} if resource_types else set(
+        _COLLECTORS_BY_RESOURCE_TYPE
+    )
     tasks = [
-        collect_networks(session, semaphores["network"]),
-        collect_subnets(session, semaphores["subnet"]),
-        collect_route_tables(session, semaphores["route_table"]),
-        collect_security_groups(session, semaphores["security_group"]),
-        collect_gateways(session, semaphores["gateway"]),
-        collect_peering_connections(session, semaphores["peering_connection"]),
+        collector(session, semaphores[resource_type])
+        for resource_type, collector in _COLLECTORS_BY_RESOURCE_TYPE.items()
+        if resource_type in selected_types
     ]
 
     # return_exceptions=True: one collector's bug/unhandled error must not
@@ -53,7 +74,10 @@ async def discover_aws_scope(
 
 
 async def discover_aws_scopes(
-    connection: EnvironmentConnection | None, scopes: list[tuple[str, str]], max_parallel_scopes: int = 5
+    connection: EnvironmentConnection | None,
+    scopes: list[tuple[str, str]],
+    max_parallel_scopes: int = 5,
+    resource_types: list[str] | None = None,
 ) -> dict[str, list[CollectionResult]]:
     """Fan out discovery across multiple AWS accounts concurrently.
 
@@ -64,7 +88,9 @@ async def discover_aws_scopes(
 
     async def _run_scope(external_scope_id: str, region: str):
         async with scope_semaphore:
-            return external_scope_id, await discover_aws_scope(connection, external_scope_id, region)
+            return external_scope_id, await discover_aws_scope(
+                connection, external_scope_id, region, resource_types
+            )
 
     results = await asyncio.gather(
         *(_run_scope(scope_id, region) for scope_id, region in scopes)

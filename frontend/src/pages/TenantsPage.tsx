@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  Grid,
   IconButton,
   List,
   ListItem,
@@ -39,6 +40,7 @@ import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
 import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
 import DomainDisabledOutlinedIcon from "@mui/icons-material/DomainDisabledOutlined";
 import CloudQueueIcon from "@mui/icons-material/CloudQueue";
+import LayersIcon from "@mui/icons-material/Layers";
 import { useAuth } from "../auth/AuthContext";
 import { useEnvironment } from "../auth/EnvironmentContext";
 import {
@@ -92,6 +94,34 @@ const AUTH_MODES: { value: CloudAuthMode; label: string; description: string }[]
   },
   { value: "app_only", label: "App-only", description: "Uses a registered app / service account (headless)" },
 ];
+
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2.5, display: "flex", alignItems: "center", gap: 2 }}>
+      <Box
+        sx={{
+          width: 44,
+          height: 44,
+          borderRadius: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "rgba(11, 61, 145, 0.08)",
+          color: "primary.main",
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </Box>
+      <Box>
+        <Typography variant="h5">{value}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {label}
+        </Typography>
+      </Box>
+    </Paper>
+  );
+}
 
 function TenantScopesRows({
   tenantId,
@@ -553,6 +583,7 @@ export function TenantsPage() {
 
   const [activeProvider, setActiveProvider] = useState<CloudProvider>("azure");
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [scopeCount, setScopeCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
@@ -566,7 +597,12 @@ export function TenantsPage() {
 
   function reload() {
     listTenants(activeProvider, environment)
-      .then(setTenants)
+      .then((data) => {
+        setTenants(data);
+        Promise.all(data.map((t) => listScopes(t.id)))
+          .then((results) => setScopeCount(results.reduce((sum, s) => sum + s.length, 0)))
+          .catch(() => setScopeCount(0));
+      })
       .catch(() => setError("Failed to load tenants."));
   }
 
@@ -635,6 +671,19 @@ export function TenantsPage() {
         )}
       </Stack>
 
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <StatCard
+            icon={<BusinessOutlinedIcon />}
+            label={`${activeProviderLabel} Tenants (${environment})`}
+            value={tenants.length}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <StatCard icon={<LayersIcon />} label="Subscriptions / Accounts" value={scopeCount} />
+        </Grid>
+      </Grid>
+
       <Paper variant="outlined" sx={{ mb: 3 }}>
         <Tabs
           value={activeProvider}
@@ -671,10 +720,12 @@ export function TenantsPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell width={48} />
-                    <TableCell>Tenant Name</TableCell>
-                    <TableCell>External Tenant ID</TableCell>
-                    <TableCell>Auth Mode</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                    <TableCell width="35%">Tenant Name</TableCell>
+                    <TableCell width="30%">External Tenant ID</TableCell>
+                    <TableCell width="20%">Auth Mode</TableCell>
+                    <TableCell width="15%" align="right">
+                      Actions
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
