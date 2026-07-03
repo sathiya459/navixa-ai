@@ -86,3 +86,37 @@ export async function upsertConnection(
   );
   return data;
 }
+
+export interface AzureDeviceFlowStart {
+  flow_id: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+  message: string | null;
+}
+
+export type AzureDeviceFlowPollStatus = "pending" | "complete" | "error" | "expired";
+
+export interface AzureDeviceFlowPoll {
+  status: AzureDeviceFlowPollStatus;
+  message?: string;
+}
+
+export async function startAzureDeviceFlow(environment: Environment): Promise<AzureDeviceFlowStart> {
+  const { data } = await apiClient.post<AzureDeviceFlowStart>(
+    `/connections/${environment}/azure/delegated-auth/device/start`,
+  );
+  return data;
+}
+
+export async function pollAzureDeviceFlow(
+  environment: Environment,
+  flowId: string,
+): Promise<AzureDeviceFlowPoll> {
+  const { data } = await apiClient.post<AzureDeviceFlowPoll>(
+    `/connections/${environment}/azure/delegated-auth/device/poll`,
+    { flow_id: flowId },
+  );
+  return data;
+}

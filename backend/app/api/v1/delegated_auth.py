@@ -1,26 +1,39 @@
-"""Per-environment delegated SSO popup login (Section 8a): the browser
-opens `/start` in a popup window, the provider redirects back to
-`/callback` after the root-credential user signs in, and the callback
-stores an encrypted session on the EnvironmentConnection row, then closes
-the popup via postMessage. One login per (environment, provider) - reused
-across every tenant/account in that environment. This is what "Sync
-Accounts" and NAVIXA Discover actually authenticate with in delegated
-mode - never the backend host's own CLI session.
+"""Per-environment delegated SSO login (Section 8a): one login per
+(environment, provider), reused across every tenant/account in that
+environment. This is what "Sync Accounts" and NAVIXA Discover actually
+authenticate with in delegated mode - never the backend host's own CLI
+session.
+
+Azure uses the OAuth 2.0 Device Authorization Grant (RFC 8628): the
+frontend calls `/device/start`, shows the returned code + verification
+URL, and polls `/device/poll` until the admin completes sign-in at
+https://microsoft.com/devicelogin. AWS uses a browser-popup authorization
+code + PKCE flow instead (`/start` + `/callback`), since NAVIXA registers
+its own AWS SSO OIDC client and controls its redirect URI - unlike Azure's
+well-known CLI client, whose pre-registered redirect URIs a real backend
+callback can't match (see app/collectors/azure/client.py's docstring).
 """
 
 import json
 import time
 
 import aioboto3
-import msal
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_role
-from app.auth.pkce_store import consume_state, create_state, generate_pkce_pair
+from app.auth.pkce_store import (
+    consume_state,
+    create_device_flow_state,
+    create_state,
+    delete_device_flow_state,
+    generate_pkce_pair,
+    get_device_flow_state,
+)
 from app.auth.token_encryption import encrypt
-from app.collectors.azure.client import ARM_SCOPE, build_msal_app
+from app.collectors.azure.client import persist_azure_session, poll_device_flow, start_device_flow
 from app.config.settings import get_settings
 from app.database.session import get_db
 from app.models.role import ADMIN
@@ -52,72 +65,70 @@ def _popup_response(success: bool, message: str = "") -> HTMLResponse:
     return HTMLResponse(html)
 
 
-# --- Azure -----------------------------------------------------------------
+# --- Azure (device code flow) ---------------------------------------------
 
 
-@router.get("/{environment}/azure/delegated-auth/start")
-async def start_azure_delegated_auth(
+class DeviceFlowPollRequest(BaseModel):
+    flow_id: str
+
+
+@router.post("/{environment}/azure/delegated-auth/device/start")
+async def start_azure_device_flow(
     environment: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
 ) -> dict:
-    """Returns the Microsoft authorize URL as JSON rather than redirecting
-    directly - this endpoint requires Admin auth (a Bearer token), which a
-    plain `window.open(url)` popup navigation can't attach. The frontend
-    calls this via an authenticated request first, then opens the returned
-    URL in the popup itself."""
     connection = get_or_create_connection(db, environment, "azure", created_by=current_user.id)
-    redirect_uri = _callback_url(environment, "azure")
+    data = await start_device_flow(connection)
 
-    verifier, challenge = generate_pkce_pair()
-    state = await create_state(environment, "azure", verifier)
-
-    app = build_msal_app(connection)
-    auth_url = app.get_authorization_request_url(
-        scopes=[ARM_SCOPE],
-        state=state,
-        redirect_uri=redirect_uri,
-        code_challenge=challenge,
-        code_challenge_method="S256",
+    flow_id = await create_device_flow_state(
+        {"tenant_id": data["tenant_id"], "device_code": data["device_code"], "environment": environment},
+        ttl_seconds=int(data.get("expires_in", 900)),
     )
-    return {"authorize_url": auth_url}
+    return {
+        "flow_id": flow_id,
+        "user_code": data["user_code"],
+        "verification_uri": data.get("verification_uri") or data.get("verification_uri_complete"),
+        "expires_in": data.get("expires_in", 900),
+        "interval": data.get("interval", 5),
+        "message": data.get("message"),
+    }
 
 
-@router.get("/{environment}/azure/delegated-auth/callback")
-async def azure_delegated_auth_callback(
+@router.post("/{environment}/azure/delegated-auth/device/poll")
+async def poll_azure_device_flow(
     environment: str,
-    code: str | None = None,
-    state: str | None = None,
-    error_description: str | None = Query(default=None, alias="error_description"),
+    payload: DeviceFlowPollRequest,
     db: Session = Depends(get_db),
-):
-    if error_description or not code or not state:
-        return _popup_response(False, error_description or "Missing authorization code")
+    _current_user: User = Depends(require_role(ADMIN)),
+) -> dict:
+    flow_state = await get_device_flow_state(payload.flow_id)
+    if flow_state is None or flow_state.get("environment") != environment:
+        return {"status": "expired"}
 
-    state_payload = await consume_state(state)
-    if state_payload is None or state_payload.get("scope_key") != environment:
-        return _popup_response(False, "Invalid or expired sign-in attempt")
+    response = await poll_device_flow(flow_state["tenant_id"], flow_state["device_code"])
+
+    error = response.get("error")
+    if error in ("authorization_pending", "slow_down"):
+        return {"status": "pending"}
+    if error:
+        await delete_device_flow_state(payload.flow_id)
+        return {"status": "error", "message": response.get("error_description", error)}
 
     connection = get_connection(db, environment, "azure")
     if connection is None:
-        return _popup_response(False, "Connection setup expired, please try again")
+        await delete_device_flow_state(payload.flow_id)
+        return {"status": "error", "message": "Connection setup expired, please try again"}
 
-    redirect_uri = _callback_url(environment, "azure")
-
-    cache = msal.SerializableTokenCache()
-    app = build_msal_app(connection, cache=cache)
-    result = app.acquire_token_by_authorization_code(
-        code=code,
-        scopes=[ARM_SCOPE],
-        redirect_uri=redirect_uri,
-        code_verifier=state_payload["code_verifier"],
-    )
-    if "access_token" not in result:
-        return _popup_response(False, result.get("error_description", "Token exchange failed"))
-
-    connection.delegated_token_cache = encrypt(cache.serialize())
-    db.commit()
-    return _popup_response(True)
+    session = {
+        "tenant_id": flow_state["tenant_id"],
+        "access_token": response["access_token"],
+        "refresh_token": response.get("refresh_token"),
+        "access_token_expires_at": int(time.time()) + int(response.get("expires_in", 3600)),
+    }
+    persist_azure_session(connection, session)
+    await delete_device_flow_state(payload.flow_id)
+    return {"status": "complete"}
 
 
 # --- AWS -----------------------------------------------------------------

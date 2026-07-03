@@ -13,7 +13,7 @@ import pytest
 
 from app.collectors.aws.client import assume_role_for_scope as aws_assume_role_for_scope
 from app.collectors.aws.client import get_async_session as aws_get_async_session
-from app.collectors.azure.client import DelegatedMsalCredential, StubAsyncCredential
+from app.collectors.azure.client import DelegatedAzureCredential, StubAsyncCredential
 from app.collectors.azure.client import get_scoped_credential as azure_get_credential
 from app.collectors.azure.client import is_azure_federation_configured
 from app.collectors.delegated_auth_errors import DelegatedAuthRequiredError
@@ -57,7 +57,7 @@ def test_azure_delegated_mode_returns_delegated_credential_and_requires_session(
 
     connection = _fake_connection()
     credential = azure_get_credential(connection)
-    assert isinstance(credential, DelegatedMsalCredential)
+    assert isinstance(credential, DelegatedAzureCredential)
 
     with pytest.raises(DelegatedAuthRequiredError):
         asyncio.run(credential.get_token())

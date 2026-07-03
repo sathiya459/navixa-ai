@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -23,7 +25,13 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import { apiClient } from "../api/client";
 import { useEnvironment } from "../auth/EnvironmentContext";
-import { listConnections, upsertConnection } from "../api/tenants";
+import {
+  listConnections,
+  pollAzureDeviceFlow,
+  startAzureDeviceFlow,
+  upsertConnection,
+  type AzureDeviceFlowStart,
+} from "../api/tenants";
 import type { CloudProvider, EnvironmentConnection } from "../api/types";
 
 const CONNECTABLE: Record<CloudProvider, boolean> = {
@@ -33,10 +41,10 @@ const CONNECTABLE: Record<CloudProvider, boolean> = {
   oci: false,
 };
 
-// Azure always signs in via standard login.microsoftonline.com using
-// NAVIXA's own app registration (or an optional advanced override) - no
-// login URL/region needed. Only AWS's IAM Identity Center requires the
-// customer's own start URL + region before "Connect" can work.
+// Azure always signs in via a device code + standard Microsoft login using
+// Azure CLI's own well-known client - no login URL/region needed. Only
+// AWS's IAM Identity Center requires the customer's own start URL and
+// region before "Connect" can work.
 const REQUIRES_CONFIG: Record<CloudProvider, boolean> = {
   aws: true,
   azure: false,
@@ -60,6 +68,10 @@ export function ConnectionsPage() {
   const [region, setRegion] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  const [deviceFlow, setDeviceFlow] = useState<AzureDeviceFlowStart | null>(null);
+  const [deviceFlowMessage, setDeviceFlowMessage] = useState<string | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
   function reload() {
     listConnections(environment)
       .then(setConnections)
@@ -67,6 +79,12 @@ export function ConnectionsPage() {
   }
 
   useEffect(reload, [environment]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current);
+    };
+  }, []);
 
   function openEdit(connection: EnvironmentConnection) {
     setEditing(connection);
@@ -91,7 +109,48 @@ export function ConnectionsPage() {
     }
   }
 
-  async function handleConnect(connection: EnvironmentConnection) {
+  function stopPolling() {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }
+
+  async function handleAzureConnect() {
+    setError(null);
+    setDeviceFlowMessage(null);
+    try {
+      const flow = await startAzureDeviceFlow(environment);
+      setDeviceFlow(flow);
+
+      pollTimer.current = setInterval(async () => {
+        try {
+          const result = await pollAzureDeviceFlow(environment, flow.flow_id);
+          if (result.status === "complete") {
+            stopPolling();
+            setDeviceFlow(null);
+            reload();
+          } else if (result.status === "error" || result.status === "expired") {
+            stopPolling();
+            setDeviceFlowMessage(result.message || "Sign-in failed or expired. Please try again.");
+          }
+        } catch {
+          stopPolling();
+          setDeviceFlowMessage("Lost connection while checking sign-in status.");
+        }
+      }, flow.interval * 1000);
+    } catch {
+      setError("Failed to start Azure sign-in.");
+    }
+  }
+
+  function handleCancelDeviceFlow() {
+    stopPolling();
+    setDeviceFlow(null);
+    setDeviceFlowMessage(null);
+  }
+
+  async function handleAwsConnect(connection: EnvironmentConnection) {
     setError(null);
     // Open synchronously (before the await below) so browsers don't block
     // it as an unrequested popup, then navigate it once we have the real
@@ -120,6 +179,14 @@ export function ConnectionsPage() {
       reload();
     }
     window.addEventListener("message", onMessage);
+  }
+
+  function handleConnect(connection: EnvironmentConnection) {
+    if (connection.provider === "azure") {
+      handleAzureConnect();
+    } else {
+      handleAwsConnect(connection);
+    }
   }
 
   return (
@@ -157,7 +224,7 @@ export function ConnectionsPage() {
                 <TableCell>
                   {REQUIRES_CONFIG[connection.provider]
                     ? connection.sso_login_url || "—"
-                    : "Microsoft login (login.microsoftonline.com)"}
+                    : "Microsoft device login"}
                 </TableCell>
                 <TableCell>
                   {REQUIRES_CONFIG[connection.provider] ? connection.region || "—" : "—"}
@@ -235,6 +302,41 @@ export function ConnectionsPage() {
           <Button onClick={() => setEditing(null)}>Cancel</Button>
           <Button variant="contained" onClick={handleSaveConfig} disabled={isSaving}>
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deviceFlow)} onClose={handleCancelDeviceFlow} maxWidth="xs" fullWidth>
+        <DialogTitle>Sign in to Azure</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center", pt: 1 }}>
+          {deviceFlowMessage ? (
+            <Alert severity="error" sx={{ width: "100%" }}>
+              {deviceFlowMessage}
+            </Alert>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+                Go to{" "}
+                <Link href={deviceFlow?.verification_uri} target="_blank" rel="noopener">
+                  {deviceFlow?.verification_uri}
+                </Link>{" "}
+                and enter this code:
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: 2 }}>
+                {deviceFlow?.user_code}
+              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <CircularProgress size={16} />
+                <Typography variant="caption" color="text.secondary">
+                  Waiting for sign-in to complete...
+                </Typography>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDeviceFlow}>
+            {deviceFlowMessage ? "Close" : "Cancel"}
           </Button>
         </DialogActions>
       </Dialog>

@@ -60,3 +60,40 @@ async def consume_state(state: str) -> dict | None:
         return json.loads(payload)
     finally:
         await client.aclose()
+
+
+# --- Device authorization grant state (Azure device-code flow) -----------
+#
+# Separate from the PKCE state above: a device flow's `device_code` must
+# survive multiple poll requests (not single-use), so it gets its own TTL
+# matching Azure AD's own `expires_in` for that flow instead of the fixed
+# PKCE window.
+
+_DEVICE_FLOW_KEY_PREFIX = "navixa:device-flow-state:"
+
+
+async def create_device_flow_state(payload: dict, ttl_seconds: int) -> str:
+    flow_id = secrets.token_urlsafe(24)
+    client = _client()
+    try:
+        await client.set(f"{_DEVICE_FLOW_KEY_PREFIX}{flow_id}", json.dumps(payload), ex=ttl_seconds)
+    finally:
+        await client.aclose()
+    return flow_id
+
+
+async def get_device_flow_state(flow_id: str) -> dict | None:
+    client = _client()
+    try:
+        payload = await client.get(f"{_DEVICE_FLOW_KEY_PREFIX}{flow_id}")
+        return json.loads(payload) if payload is not None else None
+    finally:
+        await client.aclose()
+
+
+async def delete_device_flow_state(flow_id: str) -> None:
+    client = _client()
+    try:
+        await client.delete(f"{_DEVICE_FLOW_KEY_PREFIX}{flow_id}")
+    finally:
+        await client.aclose()
