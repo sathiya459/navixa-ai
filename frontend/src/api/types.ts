@@ -54,6 +54,12 @@ export interface AvailableAccount {
   already_added: boolean;
 }
 
+export interface AvailableTenant {
+  tenant_id: string;
+  display_name: string;
+  already_added: boolean;
+}
+
 export type AuditJobStatus =
   | "queued"
   | "discovering"

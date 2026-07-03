@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   AvailableAccount,
+  AvailableTenant,
   CloudAuthMode,
   CloudProvider,
   Environment,
@@ -117,6 +118,21 @@ export async function pollAzureDeviceFlow(
   const { data } = await apiClient.post<AzureDeviceFlowPoll>(
     `/connections/${environment}/azure/delegated-auth/device/poll`,
     { flow_id: flowId },
+  );
+  return data;
+}
+
+export async function getAvailableTenants(environment: Environment): Promise<AvailableTenant[]> {
+  const { data } = await apiClient.get<AvailableTenant[]>(
+    `/connections/${environment}/azure/available-tenants`,
+  );
+  return data;
+}
+
+export async function importTenants(environment: Environment, tenantIds: string[]): Promise<Tenant[]> {
+  const { data } = await apiClient.post<Tenant[]>(
+    `/connections/${environment}/azure/import-tenants`,
+    { tenant_ids: tenantIds },
   );
   return data;
 }

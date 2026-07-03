@@ -82,3 +82,13 @@ class EnvironmentConnectionUpsert(BaseModel):
     sso_login_url: str | None = None
     region: str | None = None
     extra_config: dict | None = None
+
+
+class AvailableTenantResponse(BaseModel):
+    tenant_id: str
+    display_name: str
+    already_added: bool
+
+
+class ImportTenantsRequest(BaseModel):
+    tenant_ids: list[str]

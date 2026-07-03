@@ -54,9 +54,15 @@ apiClient.interceptors.response.use(
 
     const detail = error.response?.data?.detail;
     const config = error.config as (typeof error.config & { _delegatedAuthRetried?: boolean }) | undefined;
+    // Azure's delegated auth is a device-code flow (see
+    // app/collectors/azure/client.py) - it has no start_url to silently
+    // pop open, since it requires showing the admin a code. Only providers
+    // with a popup-style start_url (AWS today) get the automatic retry;
+    // Azure's 409 message just tells the admin to use the Connections page.
     if (
       error.response?.status === 409 &&
       detail?.code === "delegated_auth_required" &&
+      detail?.start_url &&
       config &&
       !config._delegatedAuthRetried
     ) {

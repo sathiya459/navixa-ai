@@ -1,30 +1,37 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Box,
   Button,
   Checkbox,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControlLabel,
   IconButton,
   List,
   ListItem,
   ListItemText,
   MenuItem,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tabs,
+  Tab,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SyncIcon from "@mui/icons-material/Sync";
 import { useAuth } from "../auth/AuthContext";
@@ -34,6 +41,8 @@ import {
   createTenant,
   deleteTenant,
   getAvailableAccounts,
+  getAvailableTenants,
+  importTenants,
   listScopes,
   listTenants,
   type ScopeCreatePayload,
@@ -41,13 +50,20 @@ import {
 } from "../api/tenants";
 import type {
   AvailableAccount,
+  AvailableTenant,
   CloudAuthMode,
   CloudProvider,
-  Environment,
   Scope,
   ScopeType,
   Tenant,
 } from "../api/types";
+
+const PROVIDERS: { value: CloudProvider; label: string }[] = [
+  { value: "azure", label: "Azure" },
+  { value: "aws", label: "AWS" },
+  { value: "gcp", label: "GCP" },
+  { value: "oci", label: "OCI" },
+];
 
 const ACCOUNT_SYNC_SUPPORTED: Record<CloudProvider, boolean> = {
   aws: true,
@@ -55,13 +71,6 @@ const ACCOUNT_SYNC_SUPPORTED: Record<CloudProvider, boolean> = {
   gcp: false,
   oci: false,
 };
-
-const PROVIDERS: { value: CloudProvider; label: string }[] = [
-  { value: "aws", label: "AWS" },
-  { value: "azure", label: "Azure" },
-  { value: "gcp", label: "GCP" },
-  { value: "oci", label: "OCI" },
-];
 
 const SCOPE_TYPES_BY_PROVIDER: Record<CloudProvider, ScopeType> = {
   aws: "account",
@@ -71,11 +80,15 @@ const SCOPE_TYPES_BY_PROVIDER: Record<CloudProvider, ScopeType> = {
 };
 
 const AUTH_MODES: { value: CloudAuthMode; label: string; description: string }[] = [
-  { value: "delegated", label: "Delegated (SSO)", description: "Uses the environment's shared root-credential SSO connection" },
+  {
+    value: "delegated",
+    label: "Delegated (SSO)",
+    description: "Uses the environment's shared root-credential SSO connection",
+  },
   { value: "app_only", label: "App-only", description: "Uses a registered app / service account (headless)" },
 ];
 
-function TenantScopes({
+function TenantScopesRows({
   tenantId,
   provider,
   isAdmin,
@@ -169,34 +182,49 @@ function TenantScopes({
   }
 
   return (
-    <Box>
+    <Box sx={{ py: 2, px: 4, bgcolor: "action.hover" }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
-      <List dense>
-        {scopes.map((scope) => (
-          <ListItem key={scope.id} disablePadding sx={{ py: 0.5 }}>
-            <ListItemText
-              primary={`${scope.display_name} (${scope.scope_type})`}
-              secondary={scope.external_scope_id}
-            />
-            <Chip
-              label={scope.is_active ? "active" : "inactive"}
-              size="small"
-              color={scope.is_active ? "success" : "default"}
-            />
-          </ListItem>
-        ))}
-        {scopes.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            No {SCOPE_TYPES_BY_PROVIDER[provider]}s added yet.
-          </Typography>
-        )}
-      </List>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        {SCOPE_TYPES_BY_PROVIDER[provider].charAt(0).toUpperCase() +
+          SCOPE_TYPES_BY_PROVIDER[provider].slice(1)}
+        s
+      </Typography>
+      {scopes.length > 0 ? (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>External ID</TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {scopes.map((scope) => (
+              <TableRow key={scope.id}>
+                <TableCell>{scope.display_name}</TableCell>
+                <TableCell>{scope.external_scope_id}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={scope.is_active ? "active" : "inactive"}
+                    size="small"
+                    color={scope.is_active ? "success" : "default"}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          No {SCOPE_TYPES_BY_PROVIDER[provider]}s added yet.
+        </Typography>
+      )}
       {isAdmin && (
-        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+        <Box sx={{ display: "flex", gap: 1, mt: 1.5 }}>
           <Button size="small" onClick={() => setDialogOpen(true)}>
             Add {SCOPE_TYPES_BY_PROVIDER[provider]}
           </Button>
@@ -302,35 +330,202 @@ function TenantScopes({
   );
 }
 
+function TenantRow({
+  tenant,
+  isAdmin,
+  onDelete,
+}: {
+  tenant: Tenant;
+  isAdmin: boolean;
+  onDelete: (tenantId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <TableRow hover>
+        <TableCell width={48}>
+          <IconButton size="small" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell>{tenant.tenant_name}</TableCell>
+        <TableCell>{tenant.external_tenant_id}</TableCell>
+        <TableCell>
+          <Chip
+            label={tenant.auth_mode === "delegated" ? "Delegated (SSO)" : "App-only"}
+            size="small"
+            variant="outlined"
+          />
+        </TableCell>
+        <TableCell align="right">
+          {isAdmin && (
+            <IconButton size="small" onClick={() => onDelete(tenant.id)}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          )}
+        </TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell colSpan={5} sx={{ p: 0, borderBottom: expanded ? undefined : "none" }}>
+          <Collapse in={expanded} timeout="auto" unmountOnExit>
+            <TenantScopesRows tenantId={tenant.id} provider={tenant.provider} isAdmin={isAdmin} />
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+}
+
+function AzureImportDialog({
+  open,
+  environment,
+  onClose,
+  onImported,
+}: {
+  open: boolean;
+  environment: "dev" | "prod";
+  onClose: () => void;
+  onImported: () => void;
+}) {
+  const [availableTenants, setAvailableTenants] = useState<AvailableTenant[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsConnection, setNeedsConnection] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setIsLoading(true);
+    setError(null);
+    setNeedsConnection(false);
+    getAvailableTenants(environment)
+      .then((tenants) => {
+        setAvailableTenants(tenants);
+        setSelectedIds(tenants.filter((t) => !t.already_added).map((t) => t.tenant_id));
+      })
+      .catch((err) => {
+        const detail = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
+        if (detail?.code === "delegated_auth_required") {
+          setNeedsConnection(true);
+        } else {
+          setError("Failed to load available tenants.");
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }, [open, environment]);
+
+  function toggle(tenantId: string) {
+    setSelectedIds((prev) =>
+      prev.includes(tenantId) ? prev.filter((id) => id !== tenantId) : [...prev, tenantId],
+    );
+  }
+
+  async function handleImport() {
+    setIsImporting(true);
+    try {
+      await importTenants(environment, selectedIds);
+      onImported();
+      onClose();
+    } catch {
+      setError("Failed to import selected tenant(s).");
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Add Azure Tenant</DialogTitle>
+      <DialogContent>
+        {needsConnection && (
+          <Alert severity="warning">
+            Connect the {environment} environment's Azure account from the{" "}
+            <strong>Connections</strong> page first (Azure sign-in requires a device code, shown
+            there), then try again.
+          </Alert>
+        )}
+        {error && <Alert severity="error">{error}</Alert>}
+        {!needsConnection && !error && isLoading && (
+          <Typography variant="body2">Loading tenants visible to this connection...</Typography>
+        )}
+        {!needsConnection && !error && !isLoading && availableTenants.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No Azure AD tenants found for this connection.
+          </Typography>
+        )}
+        {!needsConnection && !error && !isLoading && availableTenants.length > 0 && (
+          <List dense>
+            {availableTenants.map((tenant) => (
+              <ListItem key={tenant.tenant_id} disablePadding>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selectedIds.includes(tenant.tenant_id)}
+                      disabled={tenant.already_added}
+                      onChange={() => toggle(tenant.tenant_id)}
+                    />
+                  }
+                  label={
+                    <ListItemText primary={tenant.display_name} secondary={tenant.tenant_id} />
+                  }
+                />
+                {tenant.already_added && (
+                  <Chip label="already added" size="small" sx={{ ml: 1 }} />
+                )}
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        {!needsConnection && (
+          <Button
+            variant="contained"
+            onClick={handleImport}
+            disabled={isLoading || isImporting || selectedIds.length === 0}
+          >
+            Add Selected
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export function TenantsPage() {
   const { user } = useAuth();
-  const { environment: activeEnvironment } = useEnvironment();
+  const { environment } = useEnvironment();
   const isAdmin = Boolean(user?.roles.includes("admin"));
+
+  const [activeProvider, setActiveProvider] = useState<CloudProvider>("azure");
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [azureDialogOpen, setAzureDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [provider, setProvider] = useState<CloudProvider>("aws");
-  const [environment, setEnvironment] = useState<Environment>("dev");
   const [tenantName, setTenantName] = useState("");
   const [externalTenantId, setExternalTenantId] = useState("");
   const [region, setRegion] = useState("");
   const [authMode, setAuthMode] = useState<CloudAuthMode>("delegated");
 
   function reload() {
-    listTenants(undefined, activeEnvironment)
+    listTenants(activeProvider, environment)
       .then(setTenants)
       .catch(() => setError("Failed to load tenants."));
   }
 
-  useEffect(reload, [activeEnvironment]);
+  useEffect(reload, [activeProvider, environment]);
 
   async function handleAddTenant() {
     setIsSubmitting(true);
     try {
       const payload: TenantCreatePayload = {
-        provider,
+        provider: activeProvider,
         environment,
         tenant_name: tenantName,
         external_tenant_id: externalTenantId,
@@ -338,7 +533,7 @@ export function TenantsPage() {
         region_info: region ? { default_region: region } : null,
       };
       await createTenant(payload);
-      setDialogOpen(false);
+      setManualDialogOpen(false);
       setTenantName("");
       setExternalTenantId("");
       setRegion("");
@@ -360,97 +555,82 @@ export function TenantsPage() {
     }
   }
 
+  function handleAddClick() {
+    if (activeProvider === "azure") {
+      setAzureDialogOpen(true);
+    } else {
+      setManualDialogOpen(true);
+    }
+  }
+
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4">Tenant Registry</Typography>
         {isAdmin && (
-          <Button
-            variant="contained"
-            onClick={() => {
-              setEnvironment(activeEnvironment);
-              setDialogOpen(true);
-            }}
-          >
+          <Button variant="contained" onClick={handleAddClick}>
             Add Tenant
           </Button>
         )}
       </Box>
 
+      <Tabs
+        value={activeProvider}
+        onChange={(_e, value: CloudProvider) => setActiveProvider(value)}
+        sx={{ mb: 2 }}
+      >
+        {PROVIDERS.map((p) => (
+          <Tab key={p.value} value={p.value} label={p.label} />
+        ))}
+      </Tabs>
+
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
-      {tenants.length === 0 && (
+      {tenants.length === 0 ? (
         <Alert severity="info">
-          No cloud tenants registered yet. Click "Add Tenant" to register your first AWS, Azure,
-          GCP, or OCI tenant.
+          No {PROVIDERS.find((p) => p.value === activeProvider)?.label} tenants registered for the{" "}
+          {environment} environment yet.
         </Alert>
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell width={48} />
+                <TableCell>Tenant Name</TableCell>
+                <TableCell>External Tenant ID</TableCell>
+                <TableCell>Auth Mode</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {tenants.map((tenant) => (
+                <TenantRow
+                  key={tenant.id}
+                  tenant={tenant}
+                  isAdmin={isAdmin}
+                  onDelete={handleDeleteTenant}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
-      {tenants.map((tenant) => (
-        <Accordion key={tenant.id}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexGrow: 1 }}>
-              <Chip label={tenant.provider.toUpperCase()} size="small" color="primary" />
-              <Typography sx={{ flexGrow: 1 }}>{tenant.tenant_name}</Typography>
-              <Chip
-                label={tenant.auth_mode === "delegated" ? "Delegated (SSO)" : "App-only"}
-                size="small"
-                variant="outlined"
-              />
-              {isAdmin && (
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteTenant(tenant.id);
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              )}
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              External Tenant ID: {tenant.external_tenant_id}
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <TenantScopes tenantId={tenant.id} provider={tenant.provider} isAdmin={isAdmin} />
-          </AccordionDetails>
-        </Accordion>
-      ))}
+      <AzureImportDialog
+        open={azureDialogOpen}
+        environment={environment}
+        onClose={() => setAzureDialogOpen(false)}
+        onImported={reload}
+      />
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Cloud Tenant</DialogTitle>
+      <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add {PROVIDERS.find((p) => p.value === activeProvider)?.label} Tenant</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-          <TextField
-            select
-            label="Cloud Provider"
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as CloudProvider)}
-            fullWidth
-          >
-            {PROVIDERS.map((p) => (
-              <MenuItem key={p.value} value={p.value}>
-                {p.label}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            label="Environment"
-            value={environment}
-            onChange={(e) => setEnvironment(e.target.value as Environment)}
-            helperText="Which root-credential SSO connection (Connections page) this tenant uses"
-            fullWidth
-          >
-            <MenuItem value="dev">Dev</MenuItem>
-            <MenuItem value="prod">Prod</MenuItem>
-          </TextField>
           <TextField
             label="Tenant Name"
             placeholder="e.g. Acme Corp Production"
@@ -462,13 +642,11 @@ export function TenantsPage() {
           <TextField
             label="External Tenant ID"
             placeholder={
-              provider === "aws"
+              activeProvider === "aws"
                 ? "AWS Organization ID or root account ID"
-                : provider === "azure"
-                  ? "Entra Tenant ID (GUID)"
-                  : provider === "gcp"
-                    ? "GCP Organization ID"
-                    : "OCI Tenancy OCID"
+                : activeProvider === "gcp"
+                  ? "GCP Organization ID"
+                  : "OCI Tenancy OCID"
             }
             value={externalTenantId}
             onChange={(e) => setExternalTenantId(e.target.value)}
@@ -476,7 +654,7 @@ export function TenantsPage() {
           />
           <TextField
             label="Default Region"
-            placeholder={provider === "aws" ? "ap-south-1" : "eastus"}
+            placeholder={activeProvider === "aws" ? "ap-south-1" : "us-ashburn-1"}
             value={region}
             onChange={(e) => setRegion(e.target.value)}
             fullWidth
@@ -486,11 +664,7 @@ export function TenantsPage() {
             label="Cloud Auth Mode"
             value={authMode}
             onChange={(e) => setAuthMode(e.target.value as CloudAuthMode)}
-            helperText={
-              authMode === "delegated"
-                ? "Uses this environment's shared SSO connection (configure it on the Connections page)"
-                : AUTH_MODES.find((m) => m.value === authMode)?.description
-            }
+            helperText={AUTH_MODES.find((m) => m.value === authMode)?.description}
             fullWidth
           >
             {AUTH_MODES.map((m) => (
@@ -501,7 +675,7 @@ export function TenantsPage() {
           </TextField>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setManualDialogOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleAddTenant}

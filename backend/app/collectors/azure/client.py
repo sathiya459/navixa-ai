@@ -197,6 +197,75 @@ class DelegatedAzureCredential(AsyncTokenCredential):
         return None
 
 
+ARM_API_VERSION = "2020-01-01"
+
+
+async def list_available_tenants(connection: EnvironmentConnection) -> list[dict]:
+    """AAD tenants the connection's signed-in identity can see, via ARM's
+    own /tenants endpoint - the same call `az account tenant list` makes."""
+    session = await get_valid_azure_session(connection)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://management.azure.com/tenants?api-version={ARM_API_VERSION}",
+            headers={"Authorization": f"Bearer {session['access_token']}"},
+        )
+    response.raise_for_status()
+    return [
+        {
+            "tenant_id": item["tenantId"],
+            "display_name": item.get("displayName") or item["tenantId"],
+        }
+        for item in response.json().get("value", [])
+    ]
+
+
+async def get_arm_token_for_tenant(connection: EnvironmentConnection, tenant_id: str) -> str:
+    """Exchanges the connection's refresh token for an access token scoped
+    to a *different* AAD tenant than its home session - a multi-tenant
+    public client's refresh token can do this for any tenant the user
+    actually has access to, which is how `az login` populates every
+    tenant/subscription from a single sign-in. Not persisted: this is a
+    one-off lookup token for discovery, not the connection's primary
+    session."""
+    session = get_azure_session_dict(connection)
+    if session is None:
+        raise DelegatedAuthRequiredError(connection.environment, "azure")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            _token_endpoint(tenant_id),
+            data={
+                "client_id": AZURE_CLI_CLIENT_ID,
+                "grant_type": "refresh_token",
+                "refresh_token": session["refresh_token"],
+                "scope": DEVICE_FLOW_SCOPE,
+            },
+        )
+    data = response.json()
+    if "access_token" not in data:
+        raise DelegatedAuthRequiredError(connection.environment, "azure")
+    return data["access_token"]
+
+
+async def list_subscriptions_for_tenant(
+    connection: EnvironmentConnection, tenant_id: str
+) -> list[dict]:
+    access_token = await get_arm_token_for_tenant(connection, tenant_id)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://management.azure.com/subscriptions?api-version={ARM_API_VERSION}",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    response.raise_for_status()
+    return [
+        {
+            "subscription_id": item["subscriptionId"],
+            "display_name": item.get("displayName") or item["subscriptionId"],
+        }
+        for item in response.json().get("value", [])
+    ]
+
+
 def get_scoped_credential(connection: EnvironmentConnection | None) -> AsyncTokenCredential:
     if settings.cloud_auth_mode == "delegated":
         return DelegatedAzureCredential(connection)

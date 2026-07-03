@@ -1,19 +1,33 @@
 def build_delegated_auth_detail(environment: str, provider: str) -> dict:
     """Structured 409 body any endpoint can return when an environment has
-    no valid cached SSO session - the frontend's axios interceptor
-    (frontend/src/api/client.ts) recognizes `code` and opens the matching
-    popup automatically, from any API call, not just one button.
+    no valid cached SSO session.
 
-    `start_url` is relative to the API's own base URL (VITE_API_BASE_URL,
-    e.g. "http://localhost:8000/api/v1") rather than the site root, since
-    the delegated-auth routes are mounted under that same prefix
-    (app/main.py: `api_router` at `settings.api_v1_prefix`).
+    AWS's popup+callback flow can be retried transparently: the frontend's
+    axios interceptor (frontend/src/api/client.ts) recognizes `code`,
+    fetches `start_url` (a GET returning {authorize_url}), opens it in a
+    popup, and retries the original request on success.
+
+    Azure's delegated auth is a device-code flow instead (see
+    app/collectors/azure/client.py's docstring for why) - it requires
+    showing the admin a code, which can't be done transparently from an
+    arbitrary failed request. For `provider == "azure"`, `start_url` is
+    omitted; the frontend must surface `message` and point the admin at
+    the Connections page instead of attempting a popup.
     """
-    return {
+    detail = {
         "code": "delegated_auth_required",
-        "start_url": f"/connections/{environment}/{provider}/delegated-auth/start",
+        "environment": environment,
+        "provider": provider,
         "message": f"Sign in via SSO to connect the {environment} environment's {provider.upper()} account.",
     }
+    if provider != "azure":
+        detail["start_url"] = f"/connections/{environment}/{provider}/delegated-auth/start"
+    else:
+        detail["message"] = (
+            f"Connect the {environment} environment's Azure account from the Connections page "
+            "first (Azure sign-in requires a device code, shown there)."
+        )
+    return detail
 
 
 class DelegatedAuthRequiredError(Exception):
