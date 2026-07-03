@@ -6,7 +6,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -32,8 +31,6 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SyncIcon from "@mui/icons-material/Sync";
 import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
@@ -220,19 +217,7 @@ function TenantScopesRows({
   const scopeLabelCap = scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1);
 
   return (
-    <Box
-      sx={{
-        py: 2.5,
-        px: 3,
-        ml: { xs: 0, sm: 6 },
-        mr: 2,
-        mb: 2,
-        bgcolor: "background.default",
-        borderRadius: 2,
-        border: "1px solid",
-        borderColor: "divider",
-      }}
-    >
+    <Box>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -384,77 +369,80 @@ function TenantScopesRows({
   );
 }
 
-function TenantRow({
+function TenantListItem({
   tenant,
+  selected,
   isAdmin,
+  onSelect,
   onDelete,
 }: {
   tenant: Tenant;
+  selected: boolean;
   isAdmin: boolean;
+  onSelect: () => void;
   onDelete: (tenantId: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-
   return (
-    <>
-      <TableRow
-        hover
-        onClick={() => setExpanded((v) => !v)}
-        sx={{ cursor: "pointer", bgcolor: expanded ? "action.selected" : undefined }}
-      >
-        <TableCell width={48}>
-          <IconButton size="small">
-            {expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-          </IconButton>
-        </TableCell>
-        <TableCell>
-          <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-            <Box
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: 1.5,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                bgcolor: "rgba(11, 61, 145, 0.08)",
-                color: "primary.main",
-                flexShrink: 0,
-              }}
-            >
-              <BusinessOutlinedIcon fontSize="small" />
-            </Box>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {tenant.tenant_name}
-            </Typography>
-          </Stack>
-        </TableCell>
-        <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem", color: "text.secondary" }}>
-          {tenant.external_tenant_id}
-        </TableCell>
-        <TableCell>
-          <Chip
-            label={tenant.auth_mode === "delegated" ? "Delegated (SSO)" : "App-only"}
+    <Paper
+      variant="outlined"
+      onClick={onSelect}
+      sx={{
+        p: 1.75,
+        mb: 1.25,
+        cursor: "pointer",
+        borderColor: selected ? "primary.main" : "divider",
+        borderWidth: selected ? 2 : 1,
+        bgcolor: selected ? "rgba(11, 61, 145, 0.04)" : "background.paper",
+      }}
+    >
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+        <Box
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: 1.5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            bgcolor: "rgba(11, 61, 145, 0.08)",
+            color: "primary.main",
+            flexShrink: 0,
+          }}
+        >
+          <BusinessOutlinedIcon fontSize="small" />
+        </Box>
+        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+            {tenant.tenant_name}
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontFamily: "monospace", display: "block" }}
+            noWrap
+          >
+            {tenant.external_tenant_id}
+          </Typography>
+        </Box>
+        {isAdmin && (
+          <IconButton
             size="small"
-            variant="outlined"
-          />
-        </TableCell>
-        <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-          {isAdmin && (
-            <IconButton size="small" onClick={() => onDelete(tenant.id)}>
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          )}
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell colSpan={5} sx={{ p: 0, borderBottom: expanded ? undefined : "none" }}>
-          <Collapse in={expanded} timeout="auto" unmountOnExit>
-            <TenantScopesRows tenantId={tenant.id} provider={tenant.provider} isAdmin={isAdmin} />
-          </Collapse>
-        </TableCell>
-      </TableRow>
-    </>
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(tenant.id);
+            }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        )}
+      </Stack>
+      <Chip
+        label={tenant.auth_mode === "delegated" ? "Delegated (SSO)" : "App-only"}
+        size="small"
+        variant="outlined"
+        sx={{ mt: 1 }}
+      />
+    </Paper>
   );
 }
 
@@ -594,11 +582,15 @@ export function TenantsPage() {
   const [externalTenantId, setExternalTenantId] = useState("");
   const [region, setRegion] = useState("");
   const [authMode, setAuthMode] = useState<CloudAuthMode>("delegated");
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
 
   function reload() {
     listTenants(activeProvider, environment)
       .then((data) => {
         setTenants(data);
+        setSelectedTenantId((current) =>
+          data.some((t) => t.id === current) ? current : (data[0]?.id ?? null),
+        );
         Promise.all(data.map((t) => listScopes(t.id)))
           .then((results) => setScopeCount(results.reduce((sum, s) => sum + s.length, 0)))
           .catch(() => setScopeCount(0));
@@ -651,6 +643,7 @@ export function TenantsPage() {
   }
 
   const activeProviderLabel = PROVIDERS.find((p) => p.value === activeProvider)?.label;
+  const selectedTenant = tenants.find((t) => t.id === selectedTenantId) ?? null;
 
   return (
     <Box>
@@ -695,53 +688,68 @@ export function TenantsPage() {
           ))}
         </Tabs>
 
-        <Box sx={{ p: tenants.length === 0 ? 0 : 2 }}>
-          {error && (
-            <Alert severity="error" sx={{ m: 2 }} onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          )}
+        {error && (
+          <Alert severity="error" sx={{ m: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
 
-          {tenants.length === 0 ? (
-            <Stack spacing={1.5} sx={{ alignItems: "center", py: 8, px: 3 }}>
-              <DomainDisabledOutlinedIcon sx={{ fontSize: 40, color: "text.disabled" }} />
-              <Typography variant="body1" color="text.secondary" sx={{ textAlign: "center" }}>
-                No {activeProviderLabel} tenants registered for the {environment} environment yet.
-              </Typography>
-              {isAdmin && (
-                <Button variant="outlined" size="small" onClick={handleAddClick}>
-                  Add {activeProviderLabel} Tenant
-                </Button>
+        {tenants.length === 0 ? (
+          <Stack spacing={1.5} sx={{ alignItems: "center", py: 8, px: 3 }}>
+            <DomainDisabledOutlinedIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+            <Typography variant="body1" color="text.secondary" sx={{ textAlign: "center" }}>
+              No {activeProviderLabel} tenants registered for the {environment} environment yet.
+            </Typography>
+            {isAdmin && (
+              <Button variant="outlined" size="small" onClick={handleAddClick}>
+                Add {activeProviderLabel} Tenant
+              </Button>
+            )}
+          </Stack>
+        ) : (
+          <Grid container>
+            <Grid
+              size={{ xs: 12, md: 4 }}
+              sx={{ p: 2, borderRight: { md: "1px solid" }, borderColor: { md: "divider" } }}
+            >
+              {tenants.map((tenant) => (
+                <TenantListItem
+                  key={tenant.id}
+                  tenant={tenant}
+                  selected={tenant.id === selectedTenantId}
+                  isAdmin={isAdmin}
+                  onSelect={() => setSelectedTenantId(tenant.id)}
+                  onDelete={handleDeleteTenant}
+                />
+              ))}
+            </Grid>
+            <Grid size={{ xs: 12, md: 8 }} sx={{ p: 3 }}>
+              {selectedTenant ? (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    {selectedTenant.tenant_name}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontFamily: "monospace", mb: 2 }}
+                  >
+                    {selectedTenant.external_tenant_id}
+                  </Typography>
+                  <TenantScopesRows
+                    tenantId={selectedTenant.id}
+                    provider={selectedTenant.provider}
+                    isAdmin={isAdmin}
+                  />
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Select a tenant to view its subscriptions/accounts.
+                </Typography>
               )}
-            </Stack>
-          ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell width={48} />
-                    <TableCell width="35%">Tenant Name</TableCell>
-                    <TableCell width="30%">External Tenant ID</TableCell>
-                    <TableCell width="20%">Auth Mode</TableCell>
-                    <TableCell width="15%" align="right">
-                      Actions
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {tenants.map((tenant) => (
-                    <TenantRow
-                      key={tenant.id}
-                      tenant={tenant}
-                      isAdmin={isAdmin}
-                      onDelete={handleDeleteTenant}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Box>
+            </Grid>
+          </Grid>
+        )}
       </Paper>
 
       <AzureImportDialog
