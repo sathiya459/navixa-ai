@@ -152,7 +152,7 @@ export function DashboardLayout() {
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar />
-        <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Container maxWidth={false} sx={{ py: 4, px: { xs: 2, sm: 3, lg: 4 } }}>
           <Outlet />
         </Container>
       </Box>
