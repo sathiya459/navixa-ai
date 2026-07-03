@@ -2,6 +2,7 @@ export type CloudProvider = "aws" | "azure" | "gcp" | "oci";
 export type ScopeType = "account" | "subscription" | "project" | "compartment";
 export type UserRole = "admin" | "reader";
 export type CloudAuthMode = "delegated" | "app_only";
+export type Environment = "dev" | "prod";
 
 export interface User {
   id: string;
@@ -20,14 +21,22 @@ export interface TokenResponse {
 export interface Tenant {
   id: string;
   provider: CloudProvider;
+  environment: Environment;
   tenant_name: string;
   external_tenant_id: string;
-  sso_login_url: string | null;
   region_info: Record<string, unknown> | null;
   auth_mode: CloudAuthMode;
   app_registration_client_id: string | null;
   app_registration_tenant_id: string | null;
   app_registration_redirect_uri: string | null;
+}
+
+export interface EnvironmentConnection {
+  environment: Environment;
+  provider: CloudProvider;
+  sso_login_url: string | null;
+  region: string | null;
+  connected: boolean;
 }
 
 export interface Scope {

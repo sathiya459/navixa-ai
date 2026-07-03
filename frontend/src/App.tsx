@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { EnvironmentProvider } from "./auth/EnvironmentContext";
 import { RequireAuth } from "./auth/RequireAuth";
 import { RequireAdmin } from "./auth/RequireAdmin";
 import { DashboardLayout } from "./components/DashboardLayout";
@@ -10,27 +11,31 @@ import { AuditWorkflowPage } from "./pages/AuditWorkflowPage";
 import { TopologyPage } from "./pages/TopologyPage";
 import { TenantsPage } from "./pages/TenantsPage";
 import { AuditJobsPage } from "./pages/AuditJobsPage";
+import { ConnectionsPage } from "./pages/ConnectionsPage";
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/sso/callback" element={<SsoCallbackPage />} />
-          <Route element={<RequireAuth />}>
-            <Route element={<DashboardLayout />}>
-              <Route path="/dashboard" element={<DashboardHomePage />} />
-              <Route path="/tenants" element={<TenantsPage />} />
-              <Route path="/audits" element={<AuditJobsPage />} />
-              <Route path="/audits/:jobId/topology" element={<TopologyPage />} />
-              <Route element={<RequireAdmin />}>
-                <Route path="/audits/new" element={<AuditWorkflowPage />} />
+        <EnvironmentProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/sso/callback" element={<SsoCallbackPage />} />
+            <Route element={<RequireAuth />}>
+              <Route element={<DashboardLayout />}>
+                <Route path="/dashboard" element={<DashboardHomePage />} />
+                <Route path="/tenants" element={<TenantsPage />} />
+                <Route path="/audits" element={<AuditJobsPage />} />
+                <Route path="/audits/:jobId/topology" element={<TopologyPage />} />
+                <Route element={<RequireAdmin />}>
+                  <Route path="/audits/new" element={<AuditWorkflowPage />} />
+                  <Route path="/connections" element={<ConnectionsPage />} />
+                </Route>
               </Route>
             </Route>
-          </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </EnvironmentProvider>
       </AuthProvider>
     </BrowserRouter>
   );

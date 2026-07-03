@@ -44,13 +44,13 @@ def test_generate_pkce_pair_produces_matching_challenge():
 
 
 def test_create_and_consume_state_round_trip():
-    state = asyncio.run(pkce_store.create_state("tenant-1", "azure", "verifier-abc"))
+    state = asyncio.run(pkce_store.create_state("dev", "azure", "verifier-abc"))
     payload = asyncio.run(pkce_store.consume_state(state))
-    assert payload == {"tenant_id": "tenant-1", "provider": "azure", "code_verifier": "verifier-abc"}
+    assert payload == {"scope_key": "dev", "provider": "azure", "code_verifier": "verifier-abc"}
 
 
 def test_consume_state_is_single_use():
-    state = asyncio.run(pkce_store.create_state("tenant-1", "aws", "verifier-xyz"))
+    state = asyncio.run(pkce_store.create_state("dev", "aws", "verifier-xyz"))
     asyncio.run(pkce_store.consume_state(state))
     assert asyncio.run(pkce_store.consume_state(state)) is None
 

@@ -28,6 +28,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SyncIcon from "@mui/icons-material/Sync";
 import { useAuth } from "../auth/AuthContext";
+import { useEnvironment } from "../auth/EnvironmentContext";
 import {
   createScope,
   createTenant,
@@ -42,6 +43,7 @@ import type {
   AvailableAccount,
   CloudAuthMode,
   CloudProvider,
+  Environment,
   Scope,
   ScopeType,
   Tenant,
@@ -69,7 +71,7 @@ const SCOPE_TYPES_BY_PROVIDER: Record<CloudProvider, ScopeType> = {
 };
 
 const AUTH_MODES: { value: CloudAuthMode; label: string; description: string }[] = [
-  { value: "delegated", label: "Delegated (SSO)", description: "Uses your own az/aws/gcloud/oci CLI login" },
+  { value: "delegated", label: "Delegated (SSO)", description: "Uses the environment's shared root-credential SSO connection" },
   { value: "app_only", label: "App-only", description: "Uses a registered app / service account (headless)" },
 ];
 
@@ -302,6 +304,7 @@ function TenantScopes({
 
 export function TenantsPage() {
   const { user } = useAuth();
+  const { environment: activeEnvironment } = useEnvironment();
   const isAdmin = Boolean(user?.roles.includes("admin"));
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -309,42 +312,36 @@ export function TenantsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [provider, setProvider] = useState<CloudProvider>("aws");
+  const [environment, setEnvironment] = useState<Environment>("dev");
   const [tenantName, setTenantName] = useState("");
   const [externalTenantId, setExternalTenantId] = useState("");
+  const [region, setRegion] = useState("");
   const [authMode, setAuthMode] = useState<CloudAuthMode>("delegated");
-  const [ssoLoginUrl, setSsoLoginUrl] = useState("");
-  const [appRegistrationClientId, setAppRegistrationClientId] = useState("");
-  const [appRegistrationTenantId, setAppRegistrationTenantId] = useState("");
 
   function reload() {
-    listTenants()
+    listTenants(undefined, activeEnvironment)
       .then(setTenants)
       .catch(() => setError("Failed to load tenants."));
   }
 
-  useEffect(reload, []);
+  useEffect(reload, [activeEnvironment]);
 
   async function handleAddTenant() {
     setIsSubmitting(true);
     try {
       const payload: TenantCreatePayload = {
         provider,
+        environment,
         tenant_name: tenantName,
         external_tenant_id: externalTenantId,
         auth_mode: authMode,
-        ...(authMode === "delegated" && {
-          sso_login_url: ssoLoginUrl || null,
-          app_registration_client_id: appRegistrationClientId || null,
-          app_registration_tenant_id: appRegistrationTenantId || null,
-        }),
+        region_info: region ? { default_region: region } : null,
       };
       await createTenant(payload);
       setDialogOpen(false);
       setTenantName("");
       setExternalTenantId("");
-      setSsoLoginUrl("");
-      setAppRegistrationClientId("");
-      setAppRegistrationTenantId("");
+      setRegion("");
       reload();
     } catch {
       setError("Failed to create tenant.");
@@ -368,7 +365,13 @@ export function TenantsPage() {
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
         <Typography variant="h4">Tenant Registry</Typography>
         {isAdmin && (
-          <Button variant="contained" onClick={() => setDialogOpen(true)}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setEnvironment(activeEnvironment);
+              setDialogOpen(true);
+            }}
+          >
             Add Tenant
           </Button>
         )}
@@ -438,6 +441,17 @@ export function TenantsPage() {
             ))}
           </TextField>
           <TextField
+            select
+            label="Environment"
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value as Environment)}
+            helperText="Which root-credential SSO connection (Connections page) this tenant uses"
+            fullWidth
+          >
+            <MenuItem value="dev">Dev</MenuItem>
+            <MenuItem value="prod">Prod</MenuItem>
+          </TextField>
+          <TextField
             label="Tenant Name"
             placeholder="e.g. Acme Corp Production"
             value={tenantName}
@@ -461,11 +475,22 @@ export function TenantsPage() {
             fullWidth
           />
           <TextField
+            label="Default Region"
+            placeholder={provider === "aws" ? "ap-south-1" : "eastus"}
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            fullWidth
+          />
+          <TextField
             select
             label="Cloud Auth Mode"
             value={authMode}
             onChange={(e) => setAuthMode(e.target.value as CloudAuthMode)}
-            helperText={AUTH_MODES.find((m) => m.value === authMode)?.description}
+            helperText={
+              authMode === "delegated"
+                ? "Uses this environment's shared SSO connection (configure it on the Connections page)"
+                : AUTH_MODES.find((m) => m.value === authMode)?.description
+            }
             fullWidth
           >
             {AUTH_MODES.map((m) => (
@@ -474,46 +499,6 @@ export function TenantsPage() {
               </MenuItem>
             ))}
           </TextField>
-
-          {authMode === "delegated" && (
-            <>
-              <Divider />
-              <Typography variant="subtitle2">SSO Sign-In Details</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Used to authenticate this specific tenant via a popup SSO login for account sync
-                and audit jobs — separate from your NAVIXA login.
-              </Typography>
-              <TextField
-                label={provider === "aws" ? "IAM Identity Center Start URL" : "SSO Login URL"}
-                placeholder={
-                  provider === "aws"
-                    ? "https://d-xxxxxxxxxx.awsapps.com/start"
-                    : "https://login.microsoftonline.com/..."
-                }
-                value={ssoLoginUrl}
-                onChange={(e) => setSsoLoginUrl(e.target.value)}
-                fullWidth
-              />
-              {provider === "azure" && (
-                <>
-                  <TextField
-                    label="App Registration Client ID (optional)"
-                    helperText="Leave blank to use NAVIXA's shared app registration"
-                    value={appRegistrationClientId}
-                    onChange={(e) => setAppRegistrationClientId(e.target.value)}
-                    fullWidth
-                  />
-                  <TextField
-                    label="Entra Tenant ID for this app registration (optional)"
-                    helperText="Defaults to the External Tenant ID above"
-                    value={appRegistrationTenantId}
-                    onChange={(e) => setAppRegistrationTenantId(e.target.value)}
-                    fullWidth
-                  />
-                </>
-              )}
-            </>
-          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>

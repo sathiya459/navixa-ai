@@ -14,6 +14,7 @@ from app.collectors.normalization import normalize_results
 from app.models.audit_job import AuditJobScope, ResourceCollectionStatusRow
 from app.models.cloud_tenant import CloudTenant
 from app.models.network_resource import NetworkResource
+from app.tenant_registry.connection_service import get_connection
 
 
 def _overall_status(results: list[CollectionResult]) -> str:
@@ -26,14 +27,15 @@ def _overall_status(results: list[CollectionResult]) -> str:
 
 
 async def _discover_by_provider(
-    tenant: CloudTenant, external_scope_id: str, region: str
+    db: Session, tenant: CloudTenant, external_scope_id: str, region: str
 ) -> list[CollectionResult]:
     provider = tenant.provider
+    connection = get_connection(db, tenant.environment, provider)
     try:
         if provider == "aws":
-            return await discover_aws_scope(tenant, external_scope_id, region)
+            return await discover_aws_scope(connection, external_scope_id, region)
         if provider == "azure":
-            return await discover_azure_scope(tenant, external_scope_id)
+            return await discover_azure_scope(connection, external_scope_id)
         if provider == "gcp":
             return await discover_gcp_scope(external_scope_id)
         if provider == "oci":
@@ -44,8 +46,9 @@ async def _discover_by_provider(
                 resource_type="_delegated_auth",
                 status="failed",
                 error_detail=(
-                    f"No active SSO session for this tenant. Sign in via "
-                    f"/tenants/{exc.tenant_id}/delegated-auth/{exc.provider}/start "
+                    f"No active SSO session for the {exc.environment} environment's "
+                    f"{exc.provider.upper()} connection. Connect it via "
+                    f"/connections/{exc.environment}/{exc.provider}/delegated-auth/start "
                     "and re-run this audit job."
                 ),
             )
@@ -64,7 +67,7 @@ async def run_discovery_for_scope(
     audit_job_scope.started_at = datetime.now(timezone.utc)
     db.commit()
 
-    results = await _discover_by_provider(tenant, external_scope_id, region)
+    results = await _discover_by_provider(db, tenant, external_scope_id, region)
 
     for result in results:
         db.add(

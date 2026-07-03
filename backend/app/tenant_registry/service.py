@@ -25,10 +25,14 @@ def create_tenant(db: Session, payload: TenantCreate, created_by: uuid.UUID) -> 
     return tenant
 
 
-def list_tenants(db: Session, provider: str | None = None) -> list[CloudTenant]:
+def list_tenants(
+    db: Session, provider: str | None = None, environment: str | None = None
+) -> list[CloudTenant]:
     query = db.query(CloudTenant)
     if provider:
         query = query.filter(CloudTenant.provider == provider)
+    if environment:
+        query = query.filter(CloudTenant.environment == environment)
     return query.order_by(CloudTenant.tenant_name).all()
 
 

@@ -1,14 +1,15 @@
-"""Per-tenant delegated SSO popup login (Section 8a): the browser opens
-`/start` in a popup window, the provider redirects back to `/callback`
-after the user signs in, and the callback stores an encrypted session on
-the CloudTenant row, then closes the popup via postMessage. This is what
-"Sync Accounts" and NAVIXA Discover actually authenticate with in
-delegated mode - never the backend host's own CLI session.
+"""Per-environment delegated SSO popup login (Section 8a): the browser
+opens `/start` in a popup window, the provider redirects back to
+`/callback` after the root-credential user signs in, and the callback
+stores an encrypted session on the EnvironmentConnection row, then closes
+the popup via postMessage. One login per (environment, provider) - reused
+across every tenant/account in that environment. This is what "Sync
+Accounts" and NAVIXA Discover actually authenticate with in delegated
+mode - never the backend host's own CLI session.
 """
 
 import json
 import time
-import uuid
 
 import aioboto3
 import msal
@@ -16,21 +17,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_role
 from app.auth.pkce_store import consume_state, create_state, generate_pkce_pair
 from app.auth.token_encryption import encrypt
 from app.collectors.azure.client import ARM_SCOPE, build_msal_app
 from app.config.settings import get_settings
 from app.database.session import get_db
-from app.tenant_registry.service import get_tenant
+from app.models.role import ADMIN
+from app.models.user import User
+from app.tenant_registry.connection_service import get_connection, get_or_create_connection
 
-router = APIRouter(prefix="/tenants", tags=["Delegated Auth"])
+router = APIRouter(prefix="/connections", tags=["Delegated Auth"])
 settings = get_settings()
 
 
-def _callback_url(tenant_id: uuid.UUID, provider: str) -> str:
+def _callback_url(environment: str, provider: str) -> str:
     return (
         f"{settings.backend_public_base_url}{settings.api_v1_prefix}"
-        f"/tenants/{tenant_id}/delegated-auth/{provider}/callback"
+        f"/connections/{environment}/{provider}/delegated-auth/callback"
     )
 
 
@@ -48,25 +52,22 @@ def _popup_response(success: bool, message: str = "") -> HTMLResponse:
     return HTMLResponse(html)
 
 
-def _get_tenant_or_404(db: Session, tenant_id: uuid.UUID):
-    tenant = get_tenant(db, tenant_id)
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    return tenant
+# --- Azure -----------------------------------------------------------------
 
 
-# --- Azure -------------------------------------------------------------
-
-
-@router.get("/{tenant_id}/delegated-auth/azure/start")
-async def start_azure_delegated_auth(tenant_id: uuid.UUID, db: Session = Depends(get_db)):
-    tenant = _get_tenant_or_404(db, tenant_id)
-    redirect_uri = tenant.app_registration_redirect_uri or _callback_url(tenant_id, "azure")
+@router.get("/{environment}/azure/delegated-auth/start")
+async def start_azure_delegated_auth(
+    environment: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(ADMIN)),
+):
+    connection = get_or_create_connection(db, environment, "azure", created_by=current_user.id)
+    redirect_uri = _callback_url(environment, "azure")
 
     verifier, challenge = generate_pkce_pair()
-    state = await create_state(str(tenant_id), "azure", verifier)
+    state = await create_state(environment, "azure", verifier)
 
-    app = build_msal_app(tenant)
+    app = build_msal_app(connection)
     auth_url = app.get_authorization_request_url(
         scopes=[ARM_SCOPE],
         state=state,
@@ -77,9 +78,9 @@ async def start_azure_delegated_auth(tenant_id: uuid.UUID, db: Session = Depends
     return RedirectResponse(auth_url)
 
 
-@router.get("/{tenant_id}/delegated-auth/azure/callback")
+@router.get("/{environment}/azure/delegated-auth/callback")
 async def azure_delegated_auth_callback(
-    tenant_id: uuid.UUID,
+    environment: str,
     code: str | None = None,
     state: str | None = None,
     error_description: str | None = Query(default=None, alias="error_description"),
@@ -89,14 +90,17 @@ async def azure_delegated_auth_callback(
         return _popup_response(False, error_description or "Missing authorization code")
 
     state_payload = await consume_state(state)
-    if state_payload is None or state_payload.get("tenant_id") != str(tenant_id):
+    if state_payload is None or state_payload.get("scope_key") != environment:
         return _popup_response(False, "Invalid or expired sign-in attempt")
 
-    tenant = _get_tenant_or_404(db, tenant_id)
-    redirect_uri = tenant.app_registration_redirect_uri or _callback_url(tenant_id, "azure")
+    connection = get_connection(db, environment, "azure")
+    if connection is None:
+        return _popup_response(False, "Connection setup expired, please try again")
+
+    redirect_uri = _callback_url(environment, "azure")
 
     cache = msal.SerializableTokenCache()
-    app = build_msal_app(tenant, cache=cache)
+    app = build_msal_app(connection, cache=cache)
     result = app.acquire_token_by_authorization_code(
         code=code,
         scopes=[ARM_SCOPE],
@@ -106,7 +110,7 @@ async def azure_delegated_auth_callback(
     if "access_token" not in result:
         return _popup_response(False, result.get("error_description", "Token exchange failed"))
 
-    tenant.delegated_token_cache = encrypt(cache.serialize())
+    connection.delegated_token_cache = encrypt(cache.serialize())
     db.commit()
     return _popup_response(True)
 
@@ -114,14 +118,14 @@ async def azure_delegated_auth_callback(
 # --- AWS -----------------------------------------------------------------
 
 
-def _aws_identity_center_region(tenant) -> str:
-    return (tenant.region_info or {}).get("identity_center_region", settings.aws_default_region)
+def _aws_identity_center_region(connection) -> str:
+    return connection.region or settings.aws_default_region
 
 
-async def _get_or_register_sso_client(tenant, region: str, redirect_uri: str) -> dict:
+async def _get_or_register_sso_client(connection, region: str, redirect_uri: str) -> dict:
     from app.collectors.aws.client import get_sso_session_dict
 
-    existing = get_sso_session_dict(tenant)
+    existing = get_sso_session_dict(connection)
     if existing and existing.get("client_id") and existing.get("region") == region:
         if existing.get("client_secret_expires_at", 0) > time.time() + 60:
             return existing
@@ -142,18 +146,31 @@ async def _get_or_register_sso_client(tenant, region: str, redirect_uri: str) ->
     }
 
 
-@router.get("/{tenant_id}/delegated-auth/aws/start")
-async def start_aws_delegated_auth(tenant_id: uuid.UUID, db: Session = Depends(get_db)):
-    tenant = _get_tenant_or_404(db, tenant_id)
-    redirect_uri = tenant.app_registration_redirect_uri or _callback_url(tenant_id, "aws")
-    region = _aws_identity_center_region(tenant)
+@router.get("/{environment}/aws/delegated-auth/start")
+async def start_aws_delegated_auth(
+    environment: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(ADMIN)),
+):
+    connection = get_or_create_connection(db, environment, "aws", created_by=current_user.id)
+    if not connection.sso_login_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Set this connection's IAM Identity Center start URL first "
+                "(PUT /connections/{environment}/aws)."
+            ),
+        )
+    redirect_uri = _callback_url(environment, "aws")
+    region = _aws_identity_center_region(connection)
 
-    client_info = await _get_or_register_sso_client(tenant, region, redirect_uri)
-    tenant.delegated_token_cache = encrypt(json.dumps(client_info))
+    client_info = await _get_or_register_sso_client(connection, region, redirect_uri)
+    connection.delegated_token_cache = encrypt(json.dumps(client_info))
+    connection.region = region
     db.commit()
 
     verifier, challenge = generate_pkce_pair()
-    state = await create_state(str(tenant_id), "aws", verifier)
+    state = await create_state(environment, "aws", verifier)
 
     authorize_url = (
         f"https://oidc.{region}.amazonaws.com/authorize"
@@ -164,9 +181,9 @@ async def start_aws_delegated_auth(tenant_id: uuid.UUID, db: Session = Depends(g
     return RedirectResponse(authorize_url)
 
 
-@router.get("/{tenant_id}/delegated-auth/aws/callback")
+@router.get("/{environment}/aws/delegated-auth/callback")
 async def aws_delegated_auth_callback(
-    tenant_id: uuid.UUID,
+    environment: str,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -176,17 +193,20 @@ async def aws_delegated_auth_callback(
         return _popup_response(False, error or "Missing authorization code")
 
     state_payload = await consume_state(state)
-    if state_payload is None or state_payload.get("tenant_id") != str(tenant_id):
+    if state_payload is None or state_payload.get("scope_key") != environment:
         return _popup_response(False, "Invalid or expired sign-in attempt")
 
     from app.collectors.aws.client import get_sso_session_dict
 
-    tenant = _get_tenant_or_404(db, tenant_id)
-    session = get_sso_session_dict(tenant)
+    connection = get_connection(db, environment, "aws")
+    if connection is None:
+        return _popup_response(False, "Connection setup expired, please try again")
+
+    session = get_sso_session_dict(connection)
     if session is None:
         return _popup_response(False, "Sign-in session expired, please try again")
 
-    redirect_uri = tenant.app_registration_redirect_uri or _callback_url(tenant_id, "aws")
+    redirect_uri = _callback_url(environment, "aws")
     aio_session = aioboto3.Session(region_name=session["region"])
     async with aio_session.client("sso-oidc", region_name=session["region"]) as client:
         try:
@@ -204,6 +224,6 @@ async def aws_delegated_auth_callback(
     session["access_token"] = response["accessToken"]
     session["refresh_token"] = response.get("refreshToken")
     session["access_token_expires_at"] = int(time.time()) + int(response.get("expiresIn", 28800))
-    tenant.delegated_token_cache = encrypt(json.dumps(session))
+    connection.delegated_token_cache = encrypt(json.dumps(session))
     db.commit()
     return _popup_response(True)

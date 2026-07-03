@@ -15,6 +15,8 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
   Toolbar,
   Typography,
 } from "@mui/material";
@@ -22,9 +24,12 @@ import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlined";
+import CableIcon from "@mui/icons-material/Cable";
 import LogoutIcon from "@mui/icons-material/Logout";
 import HubIcon from "@mui/icons-material/Hub";
 import { useAuth } from "../auth/AuthContext";
+import { useEnvironment } from "../auth/EnvironmentContext";
+import type { Environment } from "../api/types";
 
 const DRAWER_WIDTH = 240;
 
@@ -33,10 +38,12 @@ const NAV_ITEMS = [
   { label: "Tenants", path: "/tenants", icon: <BusinessOutlinedIcon fontSize="small" />, adminOnly: false },
   { label: "Audit Jobs", path: "/audits", icon: <AssignmentOutlinedIcon fontSize="small" />, adminOnly: false },
   { label: "New Audit", path: "/audits/new", icon: <AddCircleOutlineIcon fontSize="small" />, adminOnly: true },
+  { label: "Connections", path: "/connections", icon: <CableIcon fontSize="small" />, adminOnly: true },
 ];
 
 export function DashboardLayout() {
   const { user, logout } = useAuth();
+  const { environment, setEnvironment } = useEnvironment();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -66,6 +73,18 @@ export function DashboardLayout() {
             Multi-Cloud Network Architecture Intelligence Platform
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
+          {isAdmin && (
+            <ToggleButtonGroup
+              value={environment}
+              exclusive
+              size="small"
+              onChange={(_e, value: Environment | null) => value && setEnvironment(value)}
+              sx={{ mr: 2 }}
+            >
+              <ToggleButton value="dev">Dev</ToggleButton>
+              <ToggleButton value="prod">Prod</ToggleButton>
+            </ToggleButtonGroup>
+          )}
           {user && (
             <>
               <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)} size="small">

@@ -2,12 +2,14 @@
 (Section 8 / 8a).
 
 Two real modes, selected by `settings.cloud_auth_mode`:
-- "delegated": uses the specific CloudTenant's own per-tenant SSO popup
-  login session (an MSAL token cache captured by the OAuth2 authorization
-  code + PKCE flow in app/api/v1/delegated_auth.py and stored, encrypted,
-  on `CloudTenant.delegated_token_cache`) - never the backend host's own
-  `az login`/environment credentials. If there's no valid cached session,
-  raises DelegatedAuthRequiredError so the caller can prompt the popup.
+- "delegated": uses the environment's own root-credential SSO session (an
+  MSAL token cache captured by the OAuth2 authorization code + PKCE flow
+  in app/api/v1/delegated_auth.py and stored, encrypted, on
+  `EnvironmentConnection.delegated_token_cache`) - one popup login per
+  (environment, provider), reused across every tenant in that
+  environment, never the backend host's own `az login`. If there's no
+  valid cached session, raises DelegatedAuthRequiredError so the caller
+  can prompt the popup.
 - "app_only": a real Entra ID client-credentials (ClientSecretCredential)
   exchange when `azure_federation_*` settings are configured - the
   platform authenticates as its own registered Entra app, which must be
@@ -31,7 +33,7 @@ from app.auth.token_encryption import decrypt, encrypt
 from app.collectors.delegated_auth_errors import DelegatedAuthRequiredError
 from app.config.secrets import SecretProviderError, get_secret_provider
 from app.config.settings import get_settings
-from app.models.cloud_tenant import CloudTenant
+from app.models.environment_connection import EnvironmentConnection
 
 settings = get_settings()
 
@@ -56,56 +58,63 @@ def is_azure_federation_configured() -> bool:
     )
 
 
-def get_tenant_client_secret(tenant: CloudTenant) -> str | None:
-    """A tenant may register its own Entra app (optional, advanced path)
-    with its secret in Key Vault under this name; falls back to NAVIXA's
-    own shared app registration secret when not configured."""
+def get_connection_client_secret(connection: EnvironmentConnection) -> str | None:
+    """An environment connection may register its own Entra app (optional,
+    advanced path) with its secret in Key Vault under this name; falls
+    back to NAVIXA's own shared app registration secret when not
+    configured."""
     try:
-        return get_secret_provider().get_secret(f"navixa-tenant-{tenant.id}-azure-client-secret")
+        return get_secret_provider().get_secret(
+            f"navixa-connection-{connection.environment}-azure-client-secret"
+        )
     except SecretProviderError:
         return settings.entra_client_secret
 
 
 def build_msal_app(
-    tenant: CloudTenant, cache: msal.SerializableTokenCache | None = None
+    connection: EnvironmentConnection, cache: msal.SerializableTokenCache | None = None
 ) -> msal.ConfidentialClientApplication:
-    client_id = tenant.app_registration_client_id or settings.entra_client_id
-    authority_tenant_id = tenant.app_registration_tenant_id or tenant.external_tenant_id
+    extra = connection.extra_config or {}
+    client_id = extra.get("app_registration_client_id") or settings.entra_client_id
+    authority_tenant_id = extra.get("app_registration_tenant_id") or settings.entra_tenant_id
     return msal.ConfidentialClientApplication(
         client_id=client_id,
-        client_credential=get_tenant_client_secret(tenant),
+        client_credential=get_connection_client_secret(connection),
         authority=f"https://login.microsoftonline.com/{authority_tenant_id}",
         token_cache=cache,
     )
 
 
 class DelegatedMsalCredential(AsyncTokenCredential):
-    """Wraps the tenant's stored MSAL token cache. MSAL itself is
-    synchronous, so acquisition runs in a thread; when the cache mutates
-    (MSAL rotates refresh tokens on use) the new state is re-encrypted and
-    persisted back to the CloudTenant row via a short-lived DB session."""
+    """Wraps the environment connection's stored MSAL token cache. MSAL
+    itself is synchronous, so acquisition runs in a thread; when the cache
+    mutates (MSAL rotates refresh tokens on use) the new state is
+    re-encrypted and persisted back to the EnvironmentConnection row via a
+    short-lived DB session."""
 
-    def __init__(self, tenant: CloudTenant):
-        self._tenant = tenant
+    def __init__(self, connection: EnvironmentConnection | None):
+        self._connection = connection
 
     async def get_token(self, *scopes: str, **kwargs) -> AccessToken:
         return await asyncio.to_thread(self._acquire_sync, list(scopes) or [ARM_SCOPE])
 
     def _acquire_sync(self, scopes: list[str]) -> AccessToken:
-        if not self._tenant.delegated_token_cache:
-            raise DelegatedAuthRequiredError(str(self._tenant.id), "azure")
+        if self._connection is None or not self._connection.delegated_token_cache:
+            raise DelegatedAuthRequiredError(
+                self._connection.environment if self._connection else "unknown", "azure"
+            )
 
         cache = msal.SerializableTokenCache()
-        cache.deserialize(decrypt(self._tenant.delegated_token_cache))
-        app = build_msal_app(self._tenant, cache=cache)
+        cache.deserialize(decrypt(self._connection.delegated_token_cache))
+        app = build_msal_app(self._connection, cache=cache)
 
         accounts = app.get_accounts()
         if not accounts:
-            raise DelegatedAuthRequiredError(str(self._tenant.id), "azure")
+            raise DelegatedAuthRequiredError(self._connection.environment, "azure")
 
         result = app.acquire_token_silent(scopes, account=accounts[0])
         if not result or "access_token" not in result:
-            raise DelegatedAuthRequiredError(str(self._tenant.id), "azure")
+            raise DelegatedAuthRequiredError(self._connection.environment, "azure")
 
         if cache.has_state_changed:
             self._persist_cache(cache)
@@ -118,9 +127,9 @@ class DelegatedMsalCredential(AsyncTokenCredential):
 
         db = SessionLocal()
         try:
-            tenant = db.get(CloudTenant, self._tenant.id)
-            if tenant is not None:
-                tenant.delegated_token_cache = encrypt(cache.serialize())
+            connection = db.get(EnvironmentConnection, self._connection.id)
+            if connection is not None:
+                connection.delegated_token_cache = encrypt(cache.serialize())
                 db.commit()
         finally:
             db.close()
@@ -129,9 +138,9 @@ class DelegatedMsalCredential(AsyncTokenCredential):
         return None
 
 
-def get_scoped_credential(tenant: CloudTenant) -> AsyncTokenCredential:
+def get_scoped_credential(connection: EnvironmentConnection | None) -> AsyncTokenCredential:
     if settings.cloud_auth_mode == "delegated":
-        return DelegatedMsalCredential(tenant)
+        return DelegatedMsalCredential(connection)
 
     if not is_azure_federation_configured():
         return StubAsyncCredential()

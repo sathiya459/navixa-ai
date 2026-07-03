@@ -42,10 +42,16 @@ def create_tenant(
 @router.get("", response_model=list[TenantResponse])
 def list_tenants(
     provider: str | None = None,
+    environment: str | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, READER)),
+    current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[TenantResponse]:
-    return service.list_tenants(db, provider)
+    # Readers always see Dev, regardless of what they pass - the
+    # environment switch is an Admin-only capability, enforced here (not
+    # just hidden in the UI).
+    if ADMIN not in current_user.role_names:
+        environment = "dev"
+    return service.list_tenants(db, provider, environment)
 
 
 @router.get("/{tenant_id}", response_model=TenantResponse)
@@ -104,7 +110,7 @@ async def get_available_accounts(
     except DelegatedAuthRequiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=build_delegated_auth_detail(exc.tenant_id, exc.provider),
+            detail=build_delegated_auth_detail(exc.environment, exc.provider),
         ) from exc
     return [
         AvailableAccountResponse(

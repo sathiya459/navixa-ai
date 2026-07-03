@@ -1,5 +1,7 @@
-"""Short-lived (state -> PKCE code_verifier, tenant_id) mapping for the
-delegated cloud-tenant SSO popup flow (app/api/v1/delegated_auth.py).
+"""Short-lived (state -> PKCE code_verifier, scope_key) mapping for the
+delegated environment-connection SSO popup flow
+(app/api/v1/delegated_auth.py). `scope_key` is the environment name
+("dev"/"prod") the popup was started for.
 
 Backed by Redis (already required for Celery, app/workers/celery_app.py)
 rather than the request-response cycle itself, since the browser popup
@@ -34,9 +36,9 @@ def generate_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-async def create_state(tenant_id: str, provider: str, code_verifier: str) -> str:
+async def create_state(scope_key: str, provider: str, code_verifier: str) -> str:
     state = secrets.token_urlsafe(24)
-    payload = json.dumps({"tenant_id": tenant_id, "provider": provider, "code_verifier": code_verifier})
+    payload = json.dumps({"scope_key": scope_key, "provider": provider, "code_verifier": code_verifier})
     client = _client()
     try:
         await client.set(f"{_KEY_PREFIX}{state}", payload, ex=_STATE_TTL_SECONDS)

@@ -1,6 +1,6 @@
-def build_delegated_auth_detail(tenant_id: str, provider: str) -> dict:
-    """Structured 409 body any endpoint can return when a tenant has no
-    valid cached SSO session - the frontend's axios interceptor
+def build_delegated_auth_detail(environment: str, provider: str) -> dict:
+    """Structured 409 body any endpoint can return when an environment has
+    no valid cached SSO session - the frontend's axios interceptor
     (frontend/src/api/client.ts) recognizes `code` and opens the matching
     popup automatically, from any API call, not just one button.
 
@@ -11,18 +11,19 @@ def build_delegated_auth_detail(tenant_id: str, provider: str) -> dict:
     """
     return {
         "code": "delegated_auth_required",
-        "start_url": f"/tenants/{tenant_id}/delegated-auth/{provider}/start",
-        "message": f"Sign in to this tenant's {provider.upper()} account via SSO to continue.",
+        "start_url": f"/connections/{environment}/{provider}/delegated-auth/start",
+        "message": f"Sign in via SSO to connect the {environment} environment's {provider.upper()} account.",
     }
 
 
 class DelegatedAuthRequiredError(Exception):
-    """Raised when a CloudTenant in delegated mode has no valid cached SSO
-    session (never connected, or refresh failed) - the caller must
-    complete the per-tenant SSO popup login before cloud data can be
-    fetched. Carries enough to build the popup's start URL."""
+    """Raised when an (environment, provider) EnvironmentConnection has no
+    valid cached SSO session (never connected, or refresh failed) - the
+    caller must complete the SSO popup login (once per environment, not
+    per tenant) before cloud data can be fetched. Carries enough to build
+    the popup's start URL."""
 
-    def __init__(self, tenant_id: str, provider: str):
-        self.tenant_id = tenant_id
+    def __init__(self, environment: str, provider: str):
+        self.environment = environment
         self.provider = provider
-        super().__init__(f"Delegated SSO session required for tenant {tenant_id} ({provider})")
+        super().__init__(f"Delegated SSO session required for {environment}/{provider}")

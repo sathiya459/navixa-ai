@@ -23,15 +23,15 @@ from app.collectors.oci.client import get_scoped_config as oci_get_scoped_config
 from app.collectors.oci.client import is_oci_federation_configured
 
 
-def _fake_tenant(**overrides) -> SimpleNamespace:
+def _fake_connection(**overrides) -> SimpleNamespace:
     defaults = dict(
         id=uuid.uuid4(),
+        environment="dev",
         provider="azure",
-        external_tenant_id="tenant-1",
-        app_registration_client_id=None,
-        app_registration_tenant_id=None,
+        sso_login_url=None,
+        region=None,
+        extra_config=None,
         delegated_token_cache=None,
-        region_info=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -42,9 +42,9 @@ def test_aws_delegated_mode_requires_sso_session(monkeypatch):
 
     monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
 
-    tenant = _fake_tenant(provider="aws")
+    connection = _fake_connection(provider="aws")
     with pytest.raises(DelegatedAuthRequiredError):
-        asyncio.run(aws_assume_role_for_scope(tenant, "111122223333", "us-east-1"))
+        asyncio.run(aws_assume_role_for_scope(connection, "111122223333", "us-east-1"))
 
     session = aws_get_async_session(None, "us-east-1")
     assert session.region_name == "us-east-1"
@@ -55,8 +55,8 @@ def test_azure_delegated_mode_returns_delegated_credential_and_requires_session(
 
     monkeypatch.setattr(client.settings, "cloud_auth_mode", "delegated")
 
-    tenant = _fake_tenant()
-    credential = azure_get_credential(tenant)
+    connection = _fake_connection()
+    credential = azure_get_credential(connection)
     assert isinstance(credential, DelegatedMsalCredential)
 
     with pytest.raises(DelegatedAuthRequiredError):
@@ -86,7 +86,7 @@ def test_azure_falls_back_to_stub_when_unconfigured(monkeypatch):
     monkeypatch.setattr(client.settings, "azure_federation_tenant_id", None)
     assert is_azure_federation_configured() is False
 
-    credential = azure_get_credential(_fake_tenant())
+    credential = azure_get_credential(_fake_connection())
     assert isinstance(credential, StubAsyncCredential)
 
 
@@ -101,7 +101,7 @@ def test_azure_uses_client_secret_credential_when_configured(monkeypatch):
     monkeypatch.setattr(client.settings, "azure_federation_client_secret", "secret-1")
     assert is_azure_federation_configured() is True
 
-    credential = azure_get_credential(_fake_tenant())
+    credential = azure_get_credential(_fake_connection())
     assert isinstance(credential, ClientSecretCredential)
 
 

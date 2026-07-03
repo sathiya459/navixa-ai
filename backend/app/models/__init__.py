@@ -13,6 +13,7 @@ that aren't imported by every entrypoint that touches the ORM.
 from app.models.ai_insight import AIInsight  # noqa: F401
 from app.models.audit_job import AuditJob, AuditJobScope, ResourceCollectionStatusRow  # noqa: F401
 from app.models.cloud_tenant import CloudScope, CloudTenant  # noqa: F401
+from app.models.environment_connection import EnvironmentConnection  # noqa: F401
 from app.models.finding import Finding  # noqa: F401
 from app.models.network_resource import NetworkResource  # noqa: F401
 from app.models.report import Report  # noqa: F401

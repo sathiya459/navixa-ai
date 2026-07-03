@@ -10,12 +10,12 @@ from app.collectors.azure.subnet import collect_subnets
 from app.collectors.azure.vnet import collect_vnets
 from app.collectors.base import CollectionResult
 from app.config.rate_limits import AZURE_RATE_LIMITS
-from app.models.cloud_tenant import CloudTenant
+from app.models.environment_connection import EnvironmentConnection
 
 
-async def discover_azure_scope(tenant: CloudTenant, external_scope_id: str) -> list[CollectionResult]:
+async def discover_azure_scope(connection: EnvironmentConnection | None, external_scope_id: str) -> list[CollectionResult]:
     """Fan out all Azure resource-type collectors for one subscription, concurrently."""
-    credential = get_scoped_credential(tenant)
+    credential = get_scoped_credential(connection)
     network_client = get_network_client(credential, subscription_id=external_scope_id)
 
     semaphores = {
@@ -48,14 +48,14 @@ async def discover_azure_scope(tenant: CloudTenant, external_scope_id: str) -> l
 
 
 async def discover_azure_scopes(
-    tenant: CloudTenant, scopes: list[str], max_parallel_scopes: int = 5
+    connection: EnvironmentConnection | None, scopes: list[str], max_parallel_scopes: int = 5
 ) -> dict[str, list[CollectionResult]]:
     """Fan out discovery across multiple Azure subscriptions concurrently."""
     scope_semaphore = asyncio.Semaphore(max_parallel_scopes)
 
     async def _run_scope(external_scope_id: str):
         async with scope_semaphore:
-            return external_scope_id, await discover_azure_scope(tenant, external_scope_id)
+            return external_scope_id, await discover_azure_scope(connection, external_scope_id)
 
     results = await asyncio.gather(*(_run_scope(scope_id) for scope_id in scopes))
     return dict(results)
