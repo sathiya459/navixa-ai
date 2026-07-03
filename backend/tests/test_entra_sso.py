@@ -97,7 +97,7 @@ class _FakeDB:
         from app.models.role import Role
 
         if model is Role:
-            return _FakeQuery(Role(name="viewer"))
+            return _FakeQuery(Role(name="reader"))
         return _FakeQuery(None)  # no existing user
 
     def add(self, obj):
@@ -117,7 +117,7 @@ class _FakeDB:
         pass
 
 
-def test_get_or_create_entra_user_provisions_new_user_with_viewer_role():
+def test_get_or_create_entra_user_provisions_new_user_with_reader_role():
     db = _FakeDB()
     claims = {"oid": "entra-oid-1", "preferred_username": "alice@example.com", "name": "Alice"}
 

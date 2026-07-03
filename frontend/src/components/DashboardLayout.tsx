@@ -29,10 +29,10 @@ import { useAuth } from "../auth/AuthContext";
 const DRAWER_WIDTH = 240;
 
 const NAV_ITEMS = [
-  { label: "Dashboard", path: "/dashboard", icon: <DashboardOutlinedIcon fontSize="small" /> },
-  { label: "Tenants", path: "/tenants", icon: <BusinessOutlinedIcon fontSize="small" /> },
-  { label: "Audit Jobs", path: "/audits", icon: <AssignmentOutlinedIcon fontSize="small" /> },
-  { label: "New Audit", path: "/audits/new", icon: <AddCircleOutlineIcon fontSize="small" /> },
+  { label: "Dashboard", path: "/dashboard", icon: <DashboardOutlinedIcon fontSize="small" />, adminOnly: false },
+  { label: "Tenants", path: "/tenants", icon: <BusinessOutlinedIcon fontSize="small" />, adminOnly: false },
+  { label: "Audit Jobs", path: "/audits", icon: <AssignmentOutlinedIcon fontSize="small" />, adminOnly: false },
+  { label: "New Audit", path: "/audits/new", icon: <AddCircleOutlineIcon fontSize="small" />, adminOnly: true },
 ];
 
 export function DashboardLayout() {
@@ -40,6 +40,7 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const isAdmin = Boolean(user?.roles.includes("admin"));
 
   function handleLogout() {
     setMenuAnchor(null);
@@ -48,6 +49,7 @@ export function DashboardLayout() {
   }
 
   const initials = user?.email ? user.email.slice(0, 2).toUpperCase() : "?";
+  const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -111,7 +113,7 @@ export function DashboardLayout() {
         <Toolbar />
         <Box sx={{ overflow: "auto", p: 1.5 }}>
           <List>
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <ListItemButton
                 key={item.path}
                 component={NavLink}

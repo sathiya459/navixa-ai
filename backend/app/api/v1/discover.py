@@ -13,7 +13,7 @@ from app.collectors.job_service import (
 from app.database.session import get_db
 from app.models.audit_job import AuditJobScope, ResourceCollectionStatusRow
 from app.models.network_resource import NetworkResource
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.schemas.discover import (
     AuditJobCreate,
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/discover", tags=["Discover"])
 def create_job(
     payload: AuditJobCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    current_user: User = Depends(require_role(ADMIN)),
 ) -> AuditJobResponse:
     audit_job = create_audit_job(db, payload, initiated_by=current_user.id)
     run_discovery.delay(str(audit_job.id))
@@ -44,7 +44,7 @@ def create_job(
 def list_jobs(
     tenant_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[AuditJobListItem]:
     return list_audit_jobs(db, tenant_id)
 
@@ -65,7 +65,7 @@ def delete_job(
 def get_job_status(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> JobStatusResponse:
     audit_job = get_audit_job(db, job_id)
     if audit_job is None:
@@ -98,7 +98,7 @@ def get_job_resources(
     resource_type: str | None = None,
     scope_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[NetworkResourceResponse]:
     audit_job = get_audit_job(db, job_id)
     if audit_job is None:

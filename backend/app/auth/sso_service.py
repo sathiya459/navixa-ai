@@ -1,17 +1,17 @@
 from sqlalchemy.orm import Session
 
-from app.models.role import VIEWER, Role, UserRole
+from app.models.role import READER, Role, UserRole
 from app.models.user import User
 
 
 def get_or_create_entra_user(db: Session, claims: dict) -> User:
     """Finds or provisions a User row for a successful Entra ID login.
 
-    New SSO users default to the Viewer role (least privilege) since there
-    is no admin role-assignment endpoint yet - an Admin must promote them
-    via direct DB access or a future role-management API. This is a known
-    gap, not an oversight: building that endpoint is out of Phase 5 scope
-    as originally defined (Section 20 doesn't call for it explicitly).
+    Every SSO login defaults to the Reader role (least privilege) - Admin
+    is reserved for the local `admin@navixa.ai` account only. There is no
+    admin role-assignment endpoint yet - an Admin must promote an SSO user
+    to Admin via direct DB access or a future role-management API. This is
+    a known gap, not an oversight.
     """
     external_id = claims.get("oid") or claims.get("sub")
     email = claims.get("preferred_username") or claims.get("email")
@@ -32,9 +32,9 @@ def get_or_create_entra_user(db: Session, claims: dict) -> User:
     db.add(user)
     db.flush()
 
-    viewer_role = db.query(Role).filter(Role.name == VIEWER).first()
-    if viewer_role is not None:
-        db.add(UserRole(user_id=user.id, role_id=viewer_role.id))
+    reader_role = db.query(Role).filter(Role.name == READER).first()
+    if reader_role is not None:
+        db.add(UserRole(user_id=user.id, role_id=reader_role.id))
 
     db.commit()
     db.refresh(user)

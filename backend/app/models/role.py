@@ -7,9 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base, UUIDPKMixin
 
 ADMIN = "admin"
-AUDITOR = "auditor"
-VIEWER = "viewer"
-DEFAULT_ROLES = (ADMIN, AUDITOR, VIEWER)
+READER = "reader"
+DEFAULT_ROLES = (ADMIN, READER)
 
 
 class Role(Base, UUIDPKMixin):

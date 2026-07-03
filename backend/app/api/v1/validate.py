@@ -7,7 +7,7 @@ from app.auth.dependencies import require_role
 from app.collectors.job_service import get_audit_job
 from app.database.session import get_db
 from app.hub_spoke_validator.service import list_findings, run_ai_validation, run_validation
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.schemas.validate import FindingResponse, ValidateRunRequest
 
@@ -19,7 +19,7 @@ async def run_validate(
     job_id: uuid.UUID,
     payload: ValidateRunRequest,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    _current_user: User = Depends(require_role(ADMIN)),
 ) -> dict:
     audit_job = get_audit_job(db, job_id)
     if audit_job is None:
@@ -42,7 +42,7 @@ def get_validate_results(
     severity: str | None = None,
     finding_type: str | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[FindingResponse]:
     audit_job = get_audit_job(db, job_id)
     if audit_job is None:

@@ -7,7 +7,7 @@ from app.auth.dependencies import require_role
 from app.collectors.job_service import get_audit_job
 from app.database.session import get_db
 from app.internet_path_engine.service import list_pathfinder_findings, run_pathfinder
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.schemas.pathfinder import PathfinderRunRequest
 from app.schemas.validate import FindingResponse
@@ -20,7 +20,7 @@ def run_pathfinder_job(
     job_id: uuid.UUID,
     payload: PathfinderRunRequest,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    _current_user: User = Depends(require_role(ADMIN)),
 ) -> dict:
     audit_job = get_audit_job(db, job_id)
     if audit_job is None:
@@ -35,7 +35,7 @@ def get_pathfinder_results(
     job_id: uuid.UUID,
     finding_type: str | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[FindingResponse]:
     if get_audit_job(db, job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")

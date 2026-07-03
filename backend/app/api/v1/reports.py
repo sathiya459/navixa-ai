@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_role
 from app.collectors.job_service import get_audit_job
 from app.database.session import get_db
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.reports.service import generate_report, get_report, list_reports_for_job
 from app.schemas.reports import ReportGenerateRequest, ReportResponse
@@ -28,7 +28,7 @@ def create_report(
     job_id: uuid.UUID,
     payload: ReportGenerateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    current_user: User = Depends(require_role(ADMIN)),
 ) -> ReportResponse:
     audit_job = get_audit_job(db, job_id)
     if audit_job is None:
@@ -41,7 +41,7 @@ def create_report(
 def read_report(
     report_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> ReportResponse:
     report = get_report(db, report_id)
     if report is None:
@@ -53,7 +53,7 @@ def read_report(
 def download_report(
     report_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> FileResponse:
     report = get_report(db, report_id)
     if report is None or report.file_path is None:
@@ -70,7 +70,7 @@ def download_report(
 def list_job_reports(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[ReportResponse]:
     if get_audit_job(db, job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")

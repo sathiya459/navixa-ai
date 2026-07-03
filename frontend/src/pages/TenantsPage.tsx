@@ -27,6 +27,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SyncIcon from "@mui/icons-material/Sync";
+import { useAuth } from "../auth/AuthContext";
 import {
   createScope,
   createTenant,
@@ -72,7 +73,15 @@ const AUTH_MODES: { value: CloudAuthMode; label: string; description: string }[]
   { value: "app_only", label: "App-only", description: "Uses a registered app / service account (headless)" },
 ];
 
-function TenantScopes({ tenantId, provider }: { tenantId: string; provider: CloudProvider }) {
+function TenantScopes({
+  tenantId,
+  provider,
+  isAdmin,
+}: {
+  tenantId: string;
+  provider: CloudProvider;
+  isAdmin: boolean;
+}) {
   const [scopes, setScopes] = useState<Scope[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -184,29 +193,31 @@ function TenantScopes({ tenantId, provider }: { tenantId: string; provider: Clou
           </Typography>
         )}
       </List>
-      <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-        <Button size="small" onClick={() => setDialogOpen(true)}>
-          Add {SCOPE_TYPES_BY_PROVIDER[provider]}
-        </Button>
-        <Tooltip
-          title={
-            ACCOUNT_SYNC_SUPPORTED[provider]
-              ? "Check the cloud provider for accounts not yet registered"
-              : `Account sync isn't supported for ${provider.toUpperCase()} yet`
-          }
-        >
-          <span>
-            <Button
-              size="small"
-              startIcon={<SyncIcon fontSize="small" />}
-              onClick={handleOpenSync}
-              disabled={!ACCOUNT_SYNC_SUPPORTED[provider]}
-            >
-              Sync Accounts
-            </Button>
-          </span>
-        </Tooltip>
-      </Box>
+      {isAdmin && (
+        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+          <Button size="small" onClick={() => setDialogOpen(true)}>
+            Add {SCOPE_TYPES_BY_PROVIDER[provider]}
+          </Button>
+          <Tooltip
+            title={
+              ACCOUNT_SYNC_SUPPORTED[provider]
+                ? "Check the cloud provider for accounts not yet registered"
+                : `Account sync isn't supported for ${provider.toUpperCase()} yet`
+            }
+          >
+            <span>
+              <Button
+                size="small"
+                startIcon={<SyncIcon fontSize="small" />}
+                onClick={handleOpenSync}
+                disabled={!ACCOUNT_SYNC_SUPPORTED[provider]}
+              >
+                Sync Accounts
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
+      )}
 
       <Dialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Sync Accounts</DialogTitle>
@@ -290,6 +301,8 @@ function TenantScopes({ tenantId, provider }: { tenantId: string; provider: Clou
 }
 
 export function TenantsPage() {
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.roles.includes("admin"));
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -354,9 +367,11 @@ export function TenantsPage() {
     <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
         <Typography variant="h4">Tenant Registry</Typography>
-        <Button variant="contained" onClick={() => setDialogOpen(true)}>
-          Add Tenant
-        </Button>
+        {isAdmin && (
+          <Button variant="contained" onClick={() => setDialogOpen(true)}>
+            Add Tenant
+          </Button>
+        )}
       </Box>
 
       {error && (
@@ -383,15 +398,17 @@ export function TenantsPage() {
                 size="small"
                 variant="outlined"
               />
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteTenant(tenant.id);
-                }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+              {isAdmin && (
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteTenant(tenant.id);
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              )}
             </Box>
           </AccordionSummary>
           <AccordionDetails>
@@ -399,7 +416,7 @@ export function TenantsPage() {
               External Tenant ID: {tenant.external_tenant_id}
             </Typography>
             <Divider sx={{ mb: 2 }} />
-            <TenantScopes tenantId={tenant.id} provider={tenant.provider} />
+            <TenantScopes tenantId={tenant.id} provider={tenant.provider} isAdmin={isAdmin} />
           </AccordionDetails>
         </Accordion>
       ))}

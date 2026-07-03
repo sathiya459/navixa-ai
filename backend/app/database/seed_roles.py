@@ -1,4 +1,4 @@
-"""One-off script to seed the default RBAC roles (admin, auditor, viewer).
+"""One-off script to seed the default RBAC roles (admin, reader).
 
 Usage: python -m app.database.seed_roles
 """

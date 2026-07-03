@@ -19,6 +19,7 @@ import {
 import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
+import { useAuth } from "../auth/AuthContext";
 import { listTenants } from "../api/tenants";
 import { listAuditJobs } from "../api/discover";
 import type { AuditJobListItem, AuditJobStatus, Tenant } from "../api/types";
@@ -72,6 +73,8 @@ function SummaryCard({
 }
 
 export function DashboardHomePage() {
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.roles.includes("admin"));
   const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [jobs, setJobs] = useState<AuditJobListItem[]>([]);
@@ -156,22 +159,24 @@ export function DashboardHomePage() {
             )}
           </Paper>
         </Grid>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6">Start a New Audit</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Select a cloud provider, tenant, and account scope, then run NAVIXA Discover and
-                NAVIXA Validate.
-              </Typography>
-            </CardContent>
-            <CardActions>
-              <Button size="small" onClick={() => navigate("/audits/new")}>
-                Get Started
-              </Button>
-            </CardActions>
-          </Card>
-        </Grid>
+        {isAdmin && (
+          <Grid size={{ xs: 12, md: 5 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6">Start a New Audit</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Select a cloud provider, tenant, and account scope, then run NAVIXA Discover and
+                  NAVIXA Validate.
+                </Typography>
+              </CardContent>
+              <CardActions>
+                <Button size="small" onClick={() => navigate("/audits/new")}>
+                  Get Started
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+        )}
       </Grid>
     </Box>
   );

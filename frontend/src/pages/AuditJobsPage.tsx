@@ -22,6 +22,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import { useAuth } from "../auth/AuthContext";
 import { deleteAuditJob, listAuditJobs } from "../api/discover";
 import type { AuditJobListItem, AuditJobStatus } from "../api/types";
 
@@ -39,6 +40,8 @@ const STATUS_COLOR: Record<AuditJobStatus, "default" | "success" | "warning" | "
 };
 
 export function AuditJobsPage() {
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.roles.includes("admin"));
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<AuditJobListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -117,13 +120,15 @@ export function AuditJobsPage() {
                     >
                       <AccountTreeIcon fontSize="small" />
                     </IconButton>
-                    <IconButton
-                      size="small"
-                      title="Delete"
-                      onClick={() => setPendingDeleteId(job.id)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {isAdmin && (
+                      <IconButton
+                        size="small"
+                        title="Delete"
+                        onClick={() => setPendingDeleteId(job.id)}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

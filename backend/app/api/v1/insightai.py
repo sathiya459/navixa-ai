@@ -8,7 +8,7 @@ from app.ai_engine.service import generate_insights, list_insights
 from app.auth.dependencies import require_role
 from app.collectors.job_service import get_audit_job
 from app.database.session import get_db
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.schemas.insightai import AIInsightResponse, InsightGenerateRequest, ProviderStatus
 
@@ -20,7 +20,7 @@ async def generate(
     job_id: uuid.UUID,
     payload: InsightGenerateRequest,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    _current_user: User = Depends(require_role(ADMIN)),
 ) -> dict:
     if get_audit_job(db, job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
@@ -39,7 +39,7 @@ def get_insights(
     insight_type: str | None = None,
     finding_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[AIInsightResponse]:
     if get_audit_job(db, job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")

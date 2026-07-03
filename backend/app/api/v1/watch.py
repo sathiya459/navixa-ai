@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_role
 from app.collectors.job_service import get_audit_job
 from app.database.session import get_db
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.schemas.watch import (
     ResourceChangeResponse,
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/watch", tags=["Watch"])
 def create_schedule(
     payload: ScheduledDiscoveryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    current_user: User = Depends(require_role(ADMIN)),
 ) -> ScheduledDiscoveryResponse:
     return create_scheduled_discovery(
         db,
@@ -46,7 +46,7 @@ def create_schedule(
 def list_schedules(
     tenant_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[ScheduledDiscoveryResponse]:
     return list_scheduled_discoveries(db, tenant_id)
 
@@ -66,7 +66,7 @@ def diff_job(
     job_id: uuid.UUID,
     compare_to: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR)),
+    _current_user: User = Depends(require_role(ADMIN)),
 ) -> list[ResourceChangeResponse]:
     if get_audit_job(db, job_id) is None or get_audit_job(db, compare_to) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
@@ -77,7 +77,7 @@ def diff_job(
 def get_changes(
     job_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[ResourceChangeResponse]:
     if get_audit_job(db, job_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")

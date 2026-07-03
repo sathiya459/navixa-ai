@@ -1,6 +1,6 @@
 export type CloudProvider = "aws" | "azure" | "gcp" | "oci";
 export type ScopeType = "account" | "subscription" | "project" | "compartment";
-export type UserRole = "admin" | "auditor" | "viewer";
+export type UserRole = "admin" | "reader";
 export type CloudAuthMode = "delegated" | "app_only";
 
 export interface User {

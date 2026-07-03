@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_role
 from app.database.session import get_db
-from app.models.role import ADMIN, AUDITOR, VIEWER
+from app.models.role import ADMIN, READER
 from app.models.user import User
 from app.schemas.tenant import (
     AvailableAccountResponse,
@@ -43,7 +43,7 @@ def create_tenant(
 def list_tenants(
     provider: str | None = None,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[TenantResponse]:
     return service.list_tenants(db, provider)
 
@@ -52,7 +52,7 @@ def list_tenants(
 def get_tenant(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> TenantResponse:
     return _get_tenant_or_404(db, tenant_id)
 
@@ -131,7 +131,7 @@ def create_scope(
 def list_scopes(
     tenant_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_role(ADMIN, AUDITOR, VIEWER)),
+    _current_user: User = Depends(require_role(ADMIN, READER)),
 ) -> list[ScopeResponse]:
     _get_tenant_or_404(db, tenant_id)
     return service.list_scopes(db, tenant_id)
