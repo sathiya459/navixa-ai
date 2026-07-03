@@ -39,6 +39,18 @@ settings = get_settings()
 
 ARM_SCOPE = "https://management.azure.com/.default"
 
+# Microsoft's own well-known public client ID for the Azure CLI. NAVIXA's
+# own app registration (settings.entra_client_id) only has Microsoft Graph
+# permission declared - it's for logging into NAVIXA itself, not for
+# calling Azure Resource Manager, and requesting the ARM resource through
+# it fails with AADSTS650057 ("Invalid resource... not listed in the
+# requested permissions"). The Azure CLI client is a public client (no
+# secret) that's pre-consented for ARM access in effectively every tenant
+# (it's what `az login` itself uses), so the delegated-auth popup
+# authenticates as this client instead - same tenants/subscriptions any
+# given user would see via `az login`, no Azure Portal changes needed.
+AZURE_CLI_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
+
 
 class StubAsyncCredential(AsyncTokenCredential):
     """Used only when neither delegated nor app-only Azure auth is configured."""
@@ -59,28 +71,41 @@ def is_azure_federation_configured() -> bool:
 
 
 def get_connection_client_secret(connection: EnvironmentConnection) -> str | None:
-    """An environment connection may register its own Entra app (optional,
-    advanced path) with its secret in Key Vault under this name; falls
-    back to NAVIXA's own shared app registration secret when not
-    configured."""
+    """Only relevant when a connection registers its own Entra app
+    (optional, advanced path - see build_msal_app) - its secret lives in
+    Key Vault under this name."""
     try:
         return get_secret_provider().get_secret(
             f"navixa-connection-{connection.environment}-azure-client-secret"
         )
     except SecretProviderError:
-        return settings.entra_client_secret
+        return None
 
 
 def build_msal_app(
     connection: EnvironmentConnection, cache: msal.SerializableTokenCache | None = None
-) -> msal.ConfidentialClientApplication:
+) -> msal.ClientApplication:
     extra = connection.extra_config or {}
-    client_id = extra.get("app_registration_client_id") or settings.entra_client_id
     authority_tenant_id = extra.get("app_registration_tenant_id") or settings.entra_tenant_id
-    return msal.ConfidentialClientApplication(
-        client_id=client_id,
-        client_credential=get_connection_client_secret(connection),
-        authority=f"https://login.microsoftonline.com/{authority_tenant_id}",
+    authority = f"https://login.microsoftonline.com/{authority_tenant_id}"
+
+    custom_client_id = extra.get("app_registration_client_id")
+    if custom_client_id:
+        # Advanced path: the environment registered its own Entra app
+        # (must have Azure Service Management delegated permission granted
+        # itself) - a confidential client, secret required.
+        return msal.ConfidentialClientApplication(
+            client_id=custom_client_id,
+            client_credential=get_connection_client_secret(connection),
+            authority=authority,
+            token_cache=cache,
+        )
+
+    # Default path: Azure CLI's public client, already consented for ARM -
+    # no secret, nothing to configure.
+    return msal.PublicClientApplication(
+        client_id=AZURE_CLI_CLIENT_ID,
+        authority=authority,
         token_cache=cache,
     )
 
