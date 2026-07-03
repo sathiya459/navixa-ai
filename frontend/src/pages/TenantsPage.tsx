@@ -694,25 +694,26 @@ export function TenantsPage() {
           </Alert>
         )}
 
-        {tenants.length === 0 ? (
-          <Stack spacing={1.5} sx={{ alignItems: "center", py: 8, px: 3 }}>
-            <DomainDisabledOutlinedIcon sx={{ fontSize: 40, color: "text.disabled" }} />
-            <Typography variant="body1" color="text.secondary" sx={{ textAlign: "center" }}>
-              No {activeProviderLabel} tenants registered for the {environment} environment yet.
-            </Typography>
-            {isAdmin && (
-              <Button variant="outlined" size="small" onClick={handleAddClick}>
-                Add {activeProviderLabel} Tenant
-              </Button>
-            )}
-          </Stack>
-        ) : (
-          <Grid container>
-            <Grid
-              size={{ xs: 12, md: 4 }}
-              sx={{ p: 2, borderRight: { md: "1px solid" }, borderColor: { md: "divider" } }}
-            >
-              {tenants.map((tenant) => (
+        <Grid container sx={{ minHeight: 360 }}>
+          <Grid
+            size={{ xs: 12, md: 4 }}
+            sx={{ p: 2, borderRight: { md: "1px solid" }, borderColor: { md: "divider" } }}
+          >
+            {tenants.length === 0 ? (
+              <Stack spacing={1.5} sx={{ alignItems: "center", py: 6, px: 2 }}>
+                <DomainDisabledOutlinedIcon sx={{ fontSize: 36, color: "text.disabled" }} />
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+                  No {activeProviderLabel} tenants registered for the {environment} environment
+                  yet.
+                </Typography>
+                {isAdmin && (
+                  <Button variant="outlined" size="small" onClick={handleAddClick}>
+                    Add {activeProviderLabel} Tenant
+                  </Button>
+                )}
+              </Stack>
+            ) : (
+              tenants.map((tenant) => (
                 <TenantListItem
                   key={tenant.id}
                   tenant={tenant}
@@ -721,35 +722,37 @@ export function TenantsPage() {
                   onSelect={() => setSelectedTenantId(tenant.id)}
                   onDelete={handleDeleteTenant}
                 />
-              ))}
-            </Grid>
-            <Grid size={{ xs: 12, md: 8 }} sx={{ p: 3 }}>
-              {selectedTenant ? (
-                <>
-                  <Typography variant="h6" gutterBottom>
-                    {selectedTenant.tenant_name}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ fontFamily: "monospace", mb: 2 }}
-                  >
-                    {selectedTenant.external_tenant_id}
-                  </Typography>
-                  <TenantScopesRows
-                    tenantId={selectedTenant.id}
-                    provider={selectedTenant.provider}
-                    isAdmin={isAdmin}
-                  />
-                </>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Select a tenant to view its subscriptions/accounts.
-                </Typography>
-              )}
-            </Grid>
+              ))
+            )}
           </Grid>
-        )}
+          <Grid size={{ xs: 12, md: 8 }} sx={{ p: 3 }}>
+            {selectedTenant ? (
+              <>
+                <Typography variant="h6" gutterBottom>
+                  {selectedTenant.tenant_name}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ fontFamily: "monospace", mb: 2 }}
+                >
+                  {selectedTenant.external_tenant_id}
+                </Typography>
+                <TenantScopesRows
+                  tenantId={selectedTenant.id}
+                  provider={selectedTenant.provider}
+                  isAdmin={isAdmin}
+                />
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                {tenants.length === 0
+                  ? "Add a tenant to get started."
+                  : "Select a tenant to view its subscriptions/accounts."}
+              </Typography>
+            )}
+          </Grid>
+        </Grid>
       </Paper>
 
       <AzureImportDialog
