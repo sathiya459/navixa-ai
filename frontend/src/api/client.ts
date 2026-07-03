@@ -60,16 +60,25 @@ apiClient.interceptors.response.use(
       config &&
       !config._delegatedAuthRetried
     ) {
-      const popup = window.open(
-        `${API_BASE_URL}${detail.start_url}`,
-        "navixa-sso",
-        "width=520,height=680",
-      );
+      // Open the popup window immediately (before any await) so browsers
+      // don't treat it as an unrequested popup and block it, then point it
+      // at the real authorize URL once we've fetched it. `start_url` is a
+      // GET requiring Admin auth (it registers/refreshes the connection),
+      // so it must be called with the Bearer token via apiClient - a plain
+      // window.open(url) can't attach that header, which is why this can't
+      // just open detail.start_url directly.
+      const popup = window.open("", "navixa-sso", "width=520,height=680");
       if (popup) {
-        const success = await waitForPopupCompletion(popup);
-        if (success) {
-          config._delegatedAuthRetried = true;
-          return apiClient.request(config);
+        try {
+          const { data } = await apiClient.get<{ authorize_url: string }>(detail.start_url);
+          popup.location.href = data.authorize_url;
+          const success = await waitForPopupCompletion(popup);
+          if (success) {
+            config._delegatedAuthRetried = true;
+            return apiClient.request(config);
+          }
+        } catch {
+          popup.close();
         }
       }
     }

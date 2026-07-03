@@ -21,6 +21,7 @@ import {
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
+import { apiClient } from "../api/client";
 import { useEnvironment } from "../auth/EnvironmentContext";
 import { listConnections, upsertConnection } from "../api/tenants";
 import type { CloudProvider, EnvironmentConnection } from "../api/types";
@@ -32,14 +33,23 @@ const CONNECTABLE: Record<CloudProvider, boolean> = {
   oci: false,
 };
 
+// Azure always signs in via standard login.microsoftonline.com using
+// NAVIXA's own app registration (or an optional advanced override) - no
+// login URL/region needed. Only AWS's IAM Identity Center requires the
+// customer's own start URL + region before "Connect" can work.
+const REQUIRES_CONFIG: Record<CloudProvider, boolean> = {
+  aws: true,
+  azure: false,
+  gcp: false,
+  oci: false,
+};
+
 const PROVIDER_LABELS: Record<CloudProvider, string> = {
   aws: "AWS",
   azure: "Azure",
   gcp: "GCP",
   oci: "OCI",
 };
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 export function ConnectionsPage() {
   const { environment } = useEnvironment();
@@ -81,10 +91,27 @@ export function ConnectionsPage() {
     }
   }
 
-  function handleConnect(connection: EnvironmentConnection) {
-    const url = `${API_BASE_URL}/connections/${environment}/${connection.provider}/delegated-auth/start`;
-    const popup = window.open(url, "navixa-sso", "width=520,height=680");
-    if (!popup) return;
+  async function handleConnect(connection: EnvironmentConnection) {
+    setError(null);
+    // Open synchronously (before the await below) so browsers don't block
+    // it as an unrequested popup, then navigate it once we have the real
+    // authorize URL. The start endpoint requires Admin auth, which a plain
+    // window.open(url) can't attach - it has to go through apiClient.
+    const popup = window.open("", "navixa-sso", "width=520,height=680");
+    if (!popup) {
+      setError("Please allow popups for this site to connect via SSO.");
+      return;
+    }
+    try {
+      const { data } = await apiClient.get<{ authorize_url: string }>(
+        `/connections/${environment}/${connection.provider}/delegated-auth/start`,
+      );
+      popup.location.href = data.authorize_url;
+    } catch {
+      popup.close();
+      setError("Failed to start sign-in. Check the connection's configuration.");
+      return;
+    }
 
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
@@ -127,8 +154,14 @@ export function ConnectionsPage() {
             {connections.map((connection) => (
               <TableRow key={connection.provider} hover>
                 <TableCell>{PROVIDER_LABELS[connection.provider]}</TableCell>
-                <TableCell>{connection.sso_login_url || "—"}</TableCell>
-                <TableCell>{connection.region || "—"}</TableCell>
+                <TableCell>
+                  {REQUIRES_CONFIG[connection.provider]
+                    ? connection.sso_login_url || "—"
+                    : "Microsoft login (login.microsoftonline.com)"}
+                </TableCell>
+                <TableCell>
+                  {REQUIRES_CONFIG[connection.provider] ? connection.region || "—" : "—"}
+                </TableCell>
                 <TableCell>
                   {connection.connected ? (
                     <Chip
@@ -148,9 +181,11 @@ export function ConnectionsPage() {
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  <Button size="small" onClick={() => openEdit(connection)} sx={{ mr: 1 }}>
-                    Configure
-                  </Button>
+                  {REQUIRES_CONFIG[connection.provider] && (
+                    <Button size="small" onClick={() => openEdit(connection)} sx={{ mr: 1 }}>
+                      Configure
+                    </Button>
+                  )}
                   <Tooltip
                     title={
                       CONNECTABLE[connection.provider]

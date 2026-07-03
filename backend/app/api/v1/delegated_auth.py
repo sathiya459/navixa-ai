@@ -14,7 +14,7 @@ import time
 import aioboto3
 import msal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_role
@@ -60,7 +60,12 @@ async def start_azure_delegated_auth(
     environment: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
-):
+) -> dict:
+    """Returns the Microsoft authorize URL as JSON rather than redirecting
+    directly - this endpoint requires Admin auth (a Bearer token), which a
+    plain `window.open(url)` popup navigation can't attach. The frontend
+    calls this via an authenticated request first, then opens the returned
+    URL in the popup itself."""
     connection = get_or_create_connection(db, environment, "azure", created_by=current_user.id)
     redirect_uri = _callback_url(environment, "azure")
 
@@ -75,7 +80,7 @@ async def start_azure_delegated_auth(
         code_challenge=challenge,
         code_challenge_method="S256",
     )
-    return RedirectResponse(auth_url)
+    return {"authorize_url": auth_url}
 
 
 @router.get("/{environment}/azure/delegated-auth/callback")
@@ -151,7 +156,9 @@ async def start_aws_delegated_auth(
     environment: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
-):
+) -> dict:
+    """Returns the AWS authorize URL as JSON - see the Azure start
+    endpoint's docstring for why this isn't a direct redirect."""
     connection = get_or_create_connection(db, environment, "aws", created_by=current_user.id)
     if not connection.sso_login_url:
         raise HTTPException(
@@ -178,7 +185,7 @@ async def start_aws_delegated_auth(
         f"&redirect_uri={redirect_uri}&state={state}"
         f"&code_challenge={challenge}&code_challenge_method=S256"
     )
-    return RedirectResponse(authorize_url)
+    return {"authorize_url": authorize_url}
 
 
 @router.get("/{environment}/aws/delegated-auth/callback")
