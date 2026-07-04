@@ -425,14 +425,16 @@ export function AuditWorkflowPage() {
                   )}
                 </List>
                 <Box>
-                  <Button
-                    variant="contained"
-                    disabled={selectedHubIds.length === 0}
-                    onClick={() => setHubsConfirmed(true)}
-                  >
+                  <Button variant="contained" onClick={() => setHubsConfirmed(true)}>
                     Confirm Hub Selection
                   </Button>
                 </Box>
+                {hubCandidates.length > 0 && selectedHubIds.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    No hub selected — proceeding without a designated hub network is valid if
+                    none of the discovered VPCs/VNets are actually your hub.
+                  </Typography>
+                )}
               </Stack>
             )}
 

@@ -117,3 +117,14 @@ services, not part of this repo's dev-server lifecycle.
 - **No `docker` CLI in this environment.** `docker/docker-compose.yml` describes
   the intended container topology but isn't usable for local dev here — services
   are started natively as described above instead.
+- **Celery does not hot-reload.** The backend API runs with `--reload` (uvicorn
+  watches files and restarts itself), but the Celery worker/beat processes do
+  not — they keep executing whatever code was loaded at their own startup,
+  indefinitely. After editing anything under `app/collectors/`, `app/workers/`,
+  or `app/tenant_registry/`, you must manually kill and restart the worker and
+  beat processes (see "Stopping everything" above, filtering to
+  `celery_app`), or NAVIXA Discover jobs will silently keep running the old
+  code with no indication anything is stale. This has caused confusing "my fix
+  didn't work" symptoms more than once — always check the worker's startup
+  banner timestamp in `celery_worker.log` against the mtime of the files you
+  changed before concluding a fix doesn't work.

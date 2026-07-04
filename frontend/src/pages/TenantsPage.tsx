@@ -52,6 +52,7 @@ import {
   listTenants,
   type ScopeCreatePayload,
   type TenantCreatePayload,
+  type TenantImportProvider,
 } from "../api/tenants";
 import type {
   AvailableAccount,
@@ -83,6 +84,13 @@ const SCOPE_TYPES_BY_PROVIDER: Record<CloudProvider, ScopeType> = {
   azure: "subscription",
   gcp: "project",
   oci: "compartment",
+};
+
+// Providers with a delegated-auth-backed tenant import dialog (auto-populated
+// from the connection's own visibility) instead of the manual entry form.
+const TENANT_IMPORT_SUPPORTED: Partial<Record<CloudProvider, TenantImportProvider>> = {
+  azure: "azure",
+  aws: "aws",
 };
 
 const AUTH_MODES: { value: CloudAuthMode; label: string; description: string }[] = [
@@ -448,17 +456,53 @@ function TenantListItem({
   );
 }
 
-function AzureImportDialog({
+const PROVIDER_LABELS: Record<CloudProvider, string> = {
+  azure: "Azure",
+  aws: "AWS",
+  gcp: "GCP",
+  oci: "OCI",
+};
+
+const PROVIDER_TENANT_NOUN: Record<CloudProvider, string> = {
+  azure: "Azure AD tenants",
+  aws: "AWS accounts",
+  gcp: "projects",
+  oci: "compartments",
+};
+
+// AWS has no separate "tenant" concept to pick between the way Azure AD
+// does - one connection's SSO session collapses to one AWS tenant, with
+// the accounts you pick here added as scopes under it (see backend
+// tenant_registry/aws_import.py). Azure's picker is genuinely picking
+// tenants; AWS's is picking accounts to group under one auto-created
+// tenant, so the dialog copy differs accordingly.
+const PROVIDER_IMPORT_COPY: Record<TenantImportProvider, { dialogTitle: string; connectionHelperText: string }> = {
+  azure: {
+    dialogTitle: "Add Azure Tenant",
+    connectionHelperText: "Which signed-in Azure account to discover tenants from.",
+  },
+  aws: {
+    dialogTitle: "Add AWS Accounts",
+    connectionHelperText:
+      "Which AWS SSO connection to list accounts from. Accounts you add are grouped under one AWS tenant for this connection.",
+  },
+};
+
+function TenantImportDialog({
   open,
   environment,
+  provider,
   onClose,
   onImported,
 }: {
   open: boolean;
   environment: "dev" | "prod";
+  provider: TenantImportProvider;
   onClose: () => void;
   onImported: () => void;
 }) {
+  const providerLabel = PROVIDER_LABELS[provider];
+  const importCopy = PROVIDER_IMPORT_COPY[provider];
   const [connections, setConnections] = useState<EnvironmentConnection[]>([]);
   const [connectionId, setConnectionId] = useState<string>("");
   const [availableTenants, setAvailableTenants] = useState<AvailableTenant[]>([]);
@@ -478,20 +522,20 @@ function AzureImportDialog({
     setIsLoadingConnections(true);
     listConnections(environment)
       .then((all) => {
-        const azureConnections = all.filter((c) => c.provider === "azure");
-        setConnections(azureConnections);
-        if (azureConnections.length === 1) setConnectionId(azureConnections[0].id);
+        const matching = all.filter((c) => c.provider === provider);
+        setConnections(matching);
+        if (matching.length === 1) setConnectionId(matching[0].id);
       })
-      .catch(() => setError("Failed to load Azure connections."))
+      .catch(() => setError(`Failed to load ${providerLabel} connections.`))
       .finally(() => setIsLoadingConnections(false));
-  }, [open, environment]);
+  }, [open, environment, provider, providerLabel]);
 
   useEffect(() => {
     if (!open || !connectionId) return;
     setIsLoading(true);
     setError(null);
     setNeedsConnection(false);
-    getAvailableTenants(environment, connectionId)
+    getAvailableTenants(environment, connectionId, provider)
       .then((tenants) => {
         setAvailableTenants(tenants);
         setSelectedIds(tenants.filter((t) => !t.already_added).map((t) => t.tenant_id));
@@ -505,7 +549,7 @@ function AzureImportDialog({
         }
       })
       .finally(() => setIsLoading(false));
-  }, [open, environment, connectionId]);
+  }, [open, environment, connectionId, provider]);
 
   function toggle(tenantId: string) {
     setSelectedIds((prev) =>
@@ -517,7 +561,7 @@ function AzureImportDialog({
     if (!connectionId) return;
     setIsImporting(true);
     try {
-      await importTenants(environment, connectionId, selectedIds);
+      await importTenants(environment, connectionId, provider, selectedIds);
       onImported();
       onClose();
     } catch {
@@ -529,11 +573,11 @@ function AzureImportDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Azure Tenant</DialogTitle>
+      <DialogTitle>{importCopy.dialogTitle}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {!isLoadingConnections && connections.length === 0 && (
           <Alert severity="warning">
-            No Azure connections yet for the {environment} environment. Add one on the{" "}
+            No {providerLabel} connections yet for the {environment} environment. Add one on the{" "}
             <strong>Connections</strong> page first, then try again.
           </Alert>
         )}
@@ -544,7 +588,7 @@ function AzureImportDialog({
             value={connectionId}
             onChange={(e) => setConnectionId(e.target.value)}
             fullWidth
-            helperText="Which signed-in Azure account to discover tenants from."
+            helperText={importCopy.connectionHelperText}
           >
             {connections.map((c) => (
               <MenuItem key={c.id} value={c.id}>
@@ -555,8 +599,8 @@ function AzureImportDialog({
         )}
         {needsConnection && (
           <Alert severity="warning">
-            Connect this Azure connection from the <strong>Connections</strong> page first (Azure
-            sign-in requires a device code, shown there), then try again.
+            Connect this {providerLabel} connection from the <strong>Connections</strong> page
+            first, then try again.
           </Alert>
         )}
         {error && <Alert severity="error">{error}</Alert>}
@@ -565,7 +609,7 @@ function AzureImportDialog({
         )}
         {connectionId && !needsConnection && !error && !isLoading && availableTenants.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            No Azure AD tenants found for this connection.
+            No {PROVIDER_TENANT_NOUN[provider]} found for this connection.
           </Typography>
         )}
         {connectionId && !needsConnection && !error && !isLoading && availableTenants.length > 0 && (
@@ -619,7 +663,7 @@ export function TenantsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [azureDialogOpen, setAzureDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [tenantName, setTenantName] = useState("");
@@ -679,8 +723,8 @@ export function TenantsPage() {
   }
 
   function handleAddClick() {
-    if (activeProvider === "azure") {
-      setAzureDialogOpen(true);
+    if (TENANT_IMPORT_SUPPORTED[activeProvider]) {
+      setImportDialogOpen(true);
     } else {
       setManualDialogOpen(true);
     }
@@ -799,10 +843,11 @@ export function TenantsPage() {
         </Grid>
       </Paper>
 
-      <AzureImportDialog
-        open={azureDialogOpen}
+      <TenantImportDialog
+        open={importDialogOpen}
         environment={environment}
-        onClose={() => setAzureDialogOpen(false)}
+        provider={TENANT_IMPORT_SUPPORTED[activeProvider] ?? "azure"}
+        onClose={() => setImportDialogOpen(false)}
         onImported={reload}
       />
 

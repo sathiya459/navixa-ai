@@ -34,11 +34,23 @@ class ScopeStatusResponse(BaseModel):
     scope_id: uuid.UUID
     status: str
     resource_statuses: list[ResourceStatusResponse]
+    # Resource types this scope is expected to collect vs. how many have
+    # reported a status so far, plus total items found across all of
+    # them - lets the UI show "3 of 6 resource types collected (48
+    # resources found)" while the job is still running, not just after
+    # the whole scope finishes.
+    resource_types_expected: int
+    resource_types_completed: int
+    items_collected: int
 
 
 class JobStatusResponse(BaseModel):
     status: str
     scopes: list[ScopeStatusResponse]
+    resource_types_expected: int
+    resource_types_completed: int
+    items_collected: int
+    percent_complete: int
 
 
 class AuditJobListItem(BaseModel):

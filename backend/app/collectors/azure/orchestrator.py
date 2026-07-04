@@ -1,6 +1,7 @@
 """Per-scope Azure discovery fan-out (Section 10a), mirroring the AWS orchestrator."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 from app.collectors.azure.client import get_network_client, get_scoped_credential
 from app.collectors.azure.nsg import collect_network_security_groups
@@ -8,7 +9,7 @@ from app.collectors.azure.peering import collect_peering_connections
 from app.collectors.azure.route_table import collect_route_tables
 from app.collectors.azure.subnet import collect_subnets
 from app.collectors.azure.vnet import collect_vnets
-from app.collectors.base import CollectionResult
+from app.collectors.base import CollectionResult, run_collectors_with_progress
 from app.config.rate_limits import AZURE_RATE_LIMITS
 from app.models.environment_connection import EnvironmentConnection
 
@@ -22,14 +23,22 @@ _COLLECTORS_BY_RESOURCE_TYPE = {
 }
 
 
+def expected_resource_types(resource_types: list[str] | None = None) -> set[str]:
+    """See aws/orchestrator.py's function of the same name."""
+    if not resource_types:
+        return set(_COLLECTORS_BY_RESOURCE_TYPE)
+    return (set(resource_types) | {"network"}) & set(_COLLECTORS_BY_RESOURCE_TYPE)
+
+
 async def discover_azure_scope(
     connection: EnvironmentConnection | None,
     external_scope_id: str,
     resource_types: list[str] | None = None,
+    on_result: Callable[[CollectionResult], Awaitable[None]] | None = None,
 ) -> list[CollectionResult]:
     """Fan out Azure resource-type collectors for one subscription,
     concurrently. See discover_aws_scope's docstring for `resource_types`
-    semantics - identical here."""
+    and `on_result` semantics - identical here."""
     credential = get_scoped_credential(connection)
     network_client = get_network_client(credential, subscription_id=external_scope_id)
 
@@ -38,30 +47,21 @@ async def discover_azure_scope(
         for resource_type, limit in AZURE_RATE_LIMITS.items()
     }
 
-    selected_types = set(resource_types) | {"network"} if resource_types else set(
-        _COLLECTORS_BY_RESOURCE_TYPE
-    )
+    selected_types = expected_resource_types(resource_types)
 
     # Both the client and the credential itself hold an aiohttp session -
     # closing only network_client (as before) leaked the credential's
     # session, surfaced by aiohttp's "Unclosed client session" warning
     # during a real discovery run.
     async with network_client, credential:
-        tasks = [
-            collector(network_client, semaphores[resource_type])
+        collectors = {
+            resource_type: collector(network_client, semaphores[resource_type])
             for resource_type, collector in _COLLECTORS_BY_RESOURCE_TYPE.items()
             if resource_type in selected_types
-        ]
+        }
+        results = await run_collectors_with_progress(collectors, on_result)
 
-        # return_exceptions=True: fault isolation across resource types (Section 10a #4).
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    return [
-        result
-        if isinstance(result, CollectionResult)
-        else CollectionResult(resource_type="unknown", status="failed", error_detail=str(result))
-        for result in results
-    ]
+    return results
 
 
 async def discover_azure_scopes(

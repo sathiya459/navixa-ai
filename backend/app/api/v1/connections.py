@@ -16,7 +16,8 @@ from app.schemas.tenant import (
     ImportTenantsRequest,
     TenantResponse,
 )
-from app.tenant_registry.azure_import import discover_available_tenants, import_tenants
+from app.tenant_registry import aws_import
+from app.tenant_registry import azure_import
 from app.tenant_registry.connection_service import (
     DuplicateConnectionNameError,
     create_connection,
@@ -100,18 +101,18 @@ def delete_connection_endpoint(
     delete_connection(db, connection_id)
 
 
-def _get_connection_or_404(db: Session, environment: str, connection_id: uuid.UUID):
+def _get_connection_or_404(db: Session, environment: str, connection_id: uuid.UUID, provider: str):
     connection = get_connection_by_id(db, connection_id)
     if (
         connection is None
         or connection.environment != environment
-        or connection.provider != "azure"
+        or connection.provider != provider
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
     if not connection.delegated_token_cache:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=build_delegated_auth_detail(environment, "azure"),
+            detail=build_delegated_auth_detail(environment, provider),
         )
     return connection
 
@@ -120,15 +121,15 @@ def _get_connection_or_404(db: Session, environment: str, connection_id: uuid.UU
     "/{environment}/{connection_id}/azure/available-tenants",
     response_model=list[AvailableTenantResponse],
 )
-async def get_available_tenants(
+async def get_azure_available_tenants(
     environment: str,
     connection_id: uuid.UUID,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role(ADMIN)),
 ) -> list[AvailableTenantResponse]:
-    connection = _get_connection_or_404(db, environment, connection_id)
+    connection = _get_connection_or_404(db, environment, connection_id, "azure")
     try:
-        tenants = await discover_available_tenants(connection, db, environment)
+        tenants = await azure_import.discover_available_tenants(connection, db, environment)
     except DelegatedAuthRequiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -146,16 +147,66 @@ async def get_available_tenants(
     "/{environment}/{connection_id}/azure/import-tenants",
     response_model=list[TenantResponse],
 )
-async def post_import_tenants(
+async def post_azure_import_tenants(
     environment: str,
     connection_id: uuid.UUID,
     payload: ImportTenantsRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
 ) -> list[TenantResponse]:
-    connection = _get_connection_or_404(db, environment, connection_id)
+    connection = _get_connection_or_404(db, environment, connection_id, "azure")
     try:
-        created = await import_tenants(
+        created = await azure_import.import_tenants(
+            connection, db, environment, payload.tenant_ids, created_by=current_user.id
+        )
+    except DelegatedAuthRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=build_delegated_auth_detail(exc.environment, exc.provider),
+        ) from exc
+    return created
+
+
+@router.get(
+    "/{environment}/{connection_id}/aws/available-tenants",
+    response_model=list[AvailableTenantResponse],
+)
+async def get_aws_available_tenants(
+    environment: str,
+    connection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role(ADMIN)),
+) -> list[AvailableTenantResponse]:
+    connection = _get_connection_or_404(db, environment, connection_id, "aws")
+    try:
+        tenants = await aws_import.discover_available_tenants(connection, db, environment)
+    except DelegatedAuthRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=build_delegated_auth_detail(exc.environment, exc.provider),
+        ) from exc
+    return [
+        AvailableTenantResponse(
+            tenant_id=t.tenant_id, display_name=t.display_name, already_added=t.already_added
+        )
+        for t in tenants
+    ]
+
+
+@router.post(
+    "/{environment}/{connection_id}/aws/import-tenants",
+    response_model=list[TenantResponse],
+)
+async def post_aws_import_tenants(
+    environment: str,
+    connection_id: uuid.UUID,
+    payload: ImportTenantsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(ADMIN)),
+) -> list[TenantResponse]:
+    connection = _get_connection_or_404(db, environment, connection_id, "aws")
+    try:
+        created = await aws_import.import_tenants(
             connection, db, environment, payload.tenant_ids, created_by=current_user.id
         )
     except DelegatedAuthRequiredError as exc:

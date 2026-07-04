@@ -13,6 +13,7 @@ import {
   DialogTitle,
   Grid,
   IconButton,
+  LinearProgress,
   Paper,
   Stack,
   Table,
@@ -151,7 +152,7 @@ function ProgressDialog({
         )}
         {status && (
           <Box>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 2 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
               <Typography variant="body2">Overall status:</Typography>
               <Chip
                 label={status.status}
@@ -161,6 +162,26 @@ function ProgressDialog({
               {isRunning && <CircularProgress size={14} />}
             </Stack>
 
+            {status.resource_types_expected > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Stack direction="row" sx={{ justifyContent: "space-between", mb: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {status.resource_types_completed} of {status.resource_types_expected} resource
+                    types collected
+                    {status.items_collected > 0 && ` — ${status.items_collected} resources found`}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {status.percent_complete}%
+                  </Typography>
+                </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={status.percent_complete}
+                  color={STATUS_COLOR[status.status] === "error" ? "error" : "primary"}
+                />
+              </Box>
+            )}
+
             {status.scopes.map((scope) => (
               <Box key={scope.scope_id} sx={{ mb: 2 }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
@@ -168,6 +189,12 @@ function ProgressDialog({
                     {scopeNames[scope.scope_id] || scope.scope_id}
                   </Typography>
                   <Chip label={scope.status} size="small" variant="outlined" />
+                  {scope.resource_types_expected > 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      {scope.resource_types_completed}/{scope.resource_types_expected} types
+                      {scope.items_collected > 0 && ` · ${scope.items_collected} resources`}
+                    </Typography>
+                  )}
                 </Stack>
                 {scope.resource_statuses.length > 0 ? (
                   <TableContainer component={Paper} variant="outlined">

@@ -102,11 +102,18 @@ export interface ScopeStatus {
   scope_id: string;
   status: string;
   resource_statuses: ResourceStatus[];
+  resource_types_expected: number;
+  resource_types_completed: number;
+  items_collected: number;
 }
 
 export interface JobStatus {
   status: AuditJobStatus;
   scopes: ScopeStatus[];
+  resource_types_expected: number;
+  resource_types_completed: number;
+  items_collected: number;
+  percent_complete: number;
 }
 
 export interface NetworkResource {

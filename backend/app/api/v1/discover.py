@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_role
+from app.collectors.discover_service import expected_resource_types
 from app.collectors.job_service import (
     create_audit_job,
     delete_audit_job,
@@ -12,6 +13,7 @@ from app.collectors.job_service import (
 )
 from app.database.session import get_db
 from app.models.audit_job import AuditJobScope, ResourceCollectionStatusRow
+from app.models.cloud_tenant import CloudTenant
 from app.models.network_resource import NetworkResource
 from app.models.role import ADMIN, READER
 from app.models.user import User
@@ -71,14 +73,23 @@ def get_job_status(
     if audit_job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
+    tenant = db.get(CloudTenant, audit_job.tenant_id)
+    requested_types = (audit_job.resource_types or {}).get("types")
+    types_per_scope = len(expected_resource_types(tenant.provider, requested_types)) if tenant else 0
+
     job_scopes = db.query(AuditJobScope).filter(AuditJobScope.audit_job_id == job_id).all()
     scope_statuses = []
+    total_completed = 0
+    total_items = 0
     for job_scope in job_scopes:
         resource_rows = (
             db.query(ResourceCollectionStatusRow)
             .filter(ResourceCollectionStatusRow.audit_job_scope_id == job_scope.id)
             .all()
         )
+        scope_items = sum(r.items_collected for r in resource_rows)
+        total_completed += len(resource_rows)
+        total_items += scope_items
         scope_statuses.append(
             ScopeStatusResponse(
                 scope_id=job_scope.cloud_scope_id,
@@ -86,10 +97,23 @@ def get_job_status(
                 resource_statuses=[
                     ResourceStatusResponse.model_validate(r) for r in resource_rows
                 ],
+                resource_types_expected=types_per_scope,
+                resource_types_completed=len(resource_rows),
+                items_collected=scope_items,
             )
         )
 
-    return JobStatusResponse(status=audit_job.status, scopes=scope_statuses)
+    total_expected = types_per_scope * len(job_scopes)
+    percent_complete = int(round(100 * total_completed / total_expected)) if total_expected else 0
+
+    return JobStatusResponse(
+        status=audit_job.status,
+        scopes=scope_statuses,
+        resource_types_expected=total_expected,
+        resource_types_completed=total_completed,
+        items_collected=total_items,
+        percent_complete=percent_complete,
+    )
 
 
 @router.get("/jobs/{job_id}/resources", response_model=list[NetworkResourceResponse])

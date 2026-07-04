@@ -151,12 +151,15 @@ export async function pollDeviceFlow(
   return data;
 }
 
+export type TenantImportProvider = "aws" | "azure";
+
 export async function getAvailableTenants(
   environment: Environment,
   connectionId: string,
+  provider: TenantImportProvider,
 ): Promise<AvailableTenant[]> {
   const { data } = await apiClient.get<AvailableTenant[]>(
-    `/connections/${environment}/${connectionId}/azure/available-tenants`,
+    `/connections/${environment}/${connectionId}/${provider}/available-tenants`,
   );
   return data;
 }
@@ -164,10 +167,11 @@ export async function getAvailableTenants(
 export async function importTenants(
   environment: Environment,
   connectionId: string,
+  provider: TenantImportProvider,
   tenantIds: string[],
 ): Promise<Tenant[]> {
   const { data } = await apiClient.post<Tenant[]>(
-    `/connections/${environment}/${connectionId}/azure/import-tenants`,
+    `/connections/${environment}/${connectionId}/${provider}/import-tenants`,
     { tenant_ids: tenantIds },
   );
   return data;
