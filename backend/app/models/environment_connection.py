@@ -10,18 +10,27 @@ from app.models.cloud_tenant import CloudProvider, Environment
 
 
 class EnvironmentConnection(Base, UUIDPKMixin, TimestampMixin):
-    """One root-credential SSO connection per (environment, provider) -
-    e.g. Dev+Azure is authenticated once (sathiya.moorthi@smcloudsec.in
-    completing the delegated-auth popup), and that session is reused for
-    every Dev-environment tenant/subscription of that provider, rather
-    than one popup per tenant.
+    """A named root-credential SSO connection for (environment, provider) -
+    e.g. Dev+Azure may have several connections, one per signed-in account
+    (sathiya.moorthi@smcloudsec.in, example2@xyz.com, ...), each
+    authenticated independently via its own delegated-auth popup/device
+    flow. Every tenant/subscription discovered through a connection is
+    tied back to it (CloudTenant.connection_id) so NAVIXA Discover always
+    uses the right account's credentials.
     """
 
     __tablename__ = "environment_connections"
-    __table_args__ = (UniqueConstraint("environment", "provider", name="uq_env_connection"),)
+    __table_args__ = (
+        UniqueConstraint("environment", "provider", "name", name="uq_env_connection_name"),
+    )
 
     environment: Mapped[str] = mapped_column(Environment, nullable=False)
     provider: Mapped[str] = mapped_column(CloudProvider, nullable=False)
+    # User-facing label - typically the signed-in account's email/UPN,
+    # auto-filled from the ID token after a successful Azure device-code
+    # login and editable thereafter. Required at creation time for AWS
+    # since there's no token claim to backfill it from.
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     sso_login_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Provider-specific extras that don't warrant their own column (e.g. an

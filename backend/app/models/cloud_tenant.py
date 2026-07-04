@@ -1,10 +1,14 @@
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, TimestampMixin, UUIDPKMixin
+
+if TYPE_CHECKING:
+    from app.models.environment_connection import EnvironmentConnection
 
 CloudProvider = Enum("aws", "azure", "gcp", "oci", name="cloud_provider")
 
@@ -38,6 +42,14 @@ class CloudTenant(Base, UUIDPKMixin, TimestampMixin):
     app_registration_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     app_registration_tenant_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     app_registration_redirect_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Which named EnvironmentConnection (delegated mode) discovered/owns
+    # this tenant - resolves credentials for Sync Accounts and Discover
+    # runs. Nullable: app_only-mode tenants don't use a connection at all,
+    # and pre-migration delegated tenants are backfilled from the single
+    # connection that used to exist for their (environment, provider).
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environment_connections.id", ondelete="SET NULL"), nullable=True
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -45,6 +57,7 @@ class CloudTenant(Base, UUIDPKMixin, TimestampMixin):
     scopes: Mapped[list["CloudScope"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )
+    connection: Mapped["EnvironmentConnection | None"] = relationship()
 
 
 class CloudScope(Base, UUIDPKMixin):

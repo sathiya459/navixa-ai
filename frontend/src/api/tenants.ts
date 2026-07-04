@@ -18,6 +18,7 @@ export interface TenantCreatePayload {
   external_tenant_id: string;
   region_info?: Record<string, unknown> | null;
   auth_mode?: CloudAuthMode;
+  connection_id?: string | null;
   app_registration_client_id?: string | null;
   app_registration_tenant_id?: string | null;
   app_registration_redirect_uri?: string | null;
@@ -29,7 +30,7 @@ export interface ScopeCreatePayload {
   display_name: string;
 }
 
-export interface ConnectionUpsertPayload {
+export interface ConnectionUpdatePayload {
   sso_login_url?: string | null;
   region?: string | null;
   extra_config?: Record<string, unknown> | null;
@@ -76,19 +77,41 @@ export async function listConnections(environment: Environment): Promise<Environ
   return data;
 }
 
-export async function upsertConnection(
+export async function createConnection(
   environment: Environment,
   provider: CloudProvider,
-  payload: ConnectionUpsertPayload,
+  name: string,
+): Promise<EnvironmentConnection> {
+  const { data } = await apiClient.post<EnvironmentConnection>(
+    `/connections/${environment}/${provider}`,
+    { name },
+  );
+  return data;
+}
+
+export async function updateConnectionConfig(
+  environment: Environment,
+  connectionId: string,
+  payload: ConnectionUpdatePayload,
 ): Promise<EnvironmentConnection> {
   const { data } = await apiClient.put<EnvironmentConnection>(
-    `/connections/${environment}/${provider}`,
+    `/connections/${environment}/${connectionId}`,
     payload,
   );
   return data;
 }
 
-export interface AzureDeviceFlowStart {
+export async function deleteConnection(environment: Environment, connectionId: string): Promise<void> {
+  await apiClient.delete(`/connections/${environment}/${connectionId}`);
+}
+
+// Both AWS and Azure connections sign in via the OAuth 2.0 Device
+// Authorization Grant - see backend/app/api/v1/delegated_auth.py's module
+// docstring for why a popup+redirect flow can't work against a real IAM
+// Identity Center instance.
+export type DeviceFlowProvider = "aws" | "azure";
+
+export interface DeviceFlowStart {
   flow_id: string;
   user_code: string;
   verification_uri: string;
@@ -97,41 +120,54 @@ export interface AzureDeviceFlowStart {
   message: string | null;
 }
 
-export type AzureDeviceFlowPollStatus = "pending" | "complete" | "error" | "expired";
+export type DeviceFlowPollStatus = "pending" | "complete" | "error" | "expired";
 
-export interface AzureDeviceFlowPoll {
-  status: AzureDeviceFlowPollStatus;
+export interface DeviceFlowPoll {
+  status: DeviceFlowPollStatus;
   message?: string;
 }
 
-export async function startAzureDeviceFlow(environment: Environment): Promise<AzureDeviceFlowStart> {
-  const { data } = await apiClient.post<AzureDeviceFlowStart>(
-    `/connections/${environment}/azure/delegated-auth/device/start`,
+export async function startDeviceFlow(
+  environment: Environment,
+  connectionId: string,
+  provider: DeviceFlowProvider,
+): Promise<DeviceFlowStart> {
+  const { data } = await apiClient.post<DeviceFlowStart>(
+    `/connections/${environment}/${connectionId}/${provider}/delegated-auth/device/start`,
   );
   return data;
 }
 
-export async function pollAzureDeviceFlow(
+export async function pollDeviceFlow(
   environment: Environment,
+  connectionId: string,
+  provider: DeviceFlowProvider,
   flowId: string,
-): Promise<AzureDeviceFlowPoll> {
-  const { data } = await apiClient.post<AzureDeviceFlowPoll>(
-    `/connections/${environment}/azure/delegated-auth/device/poll`,
+): Promise<DeviceFlowPoll> {
+  const { data } = await apiClient.post<DeviceFlowPoll>(
+    `/connections/${environment}/${connectionId}/${provider}/delegated-auth/device/poll`,
     { flow_id: flowId },
   );
   return data;
 }
 
-export async function getAvailableTenants(environment: Environment): Promise<AvailableTenant[]> {
+export async function getAvailableTenants(
+  environment: Environment,
+  connectionId: string,
+): Promise<AvailableTenant[]> {
   const { data } = await apiClient.get<AvailableTenant[]>(
-    `/connections/${environment}/azure/available-tenants`,
+    `/connections/${environment}/${connectionId}/azure/available-tenants`,
   );
   return data;
 }
 
-export async function importTenants(environment: Environment, tenantIds: string[]): Promise<Tenant[]> {
+export async function importTenants(
+  environment: Environment,
+  connectionId: string,
+  tenantIds: string[],
+): Promise<Tenant[]> {
   const { data } = await apiClient.post<Tenant[]>(
-    `/connections/${environment}/azure/import-tenants`,
+    `/connections/${environment}/${connectionId}/azure/import-tenants`,
     { tenant_ids: tenantIds },
   );
   return data;

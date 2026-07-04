@@ -1,5 +1,5 @@
-"""PKCE state store tests use an in-memory fake Redis client rather than a
-live Redis connection, matching this project's existing test-suite
+"""Device-flow state store tests use an in-memory fake Redis client rather
+than a live Redis connection, matching this project's existing test-suite
 convention of not depending on ambient infrastructure (see test_secrets.py,
 test_cloud_federation.py)."""
 
@@ -34,26 +34,19 @@ def fake_redis(monkeypatch):
     return fake
 
 
-def test_generate_pkce_pair_produces_matching_challenge():
-    import base64
-    import hashlib
-
-    verifier, challenge = pkce_store.generate_pkce_pair()
-    expected = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
-    assert challenge == expected
+def test_create_and_get_device_flow_state_round_trip():
+    payload = {"tenant_id": "tenant-1", "device_code": "code-abc", "environment": "dev"}
+    flow_id = asyncio.run(pkce_store.create_device_flow_state(payload, ttl_seconds=60))
+    assert asyncio.run(pkce_store.get_device_flow_state(flow_id)) == payload
 
 
-def test_create_and_consume_state_round_trip():
-    state = asyncio.run(pkce_store.create_state("dev", "azure", "verifier-abc"))
-    payload = asyncio.run(pkce_store.consume_state(state))
-    assert payload == {"scope_key": "dev", "provider": "azure", "code_verifier": "verifier-abc"}
+def test_get_device_flow_state_returns_none_for_unknown_flow():
+    assert asyncio.run(pkce_store.get_device_flow_state("does-not-exist")) is None
 
 
-def test_consume_state_is_single_use():
-    state = asyncio.run(pkce_store.create_state("dev", "aws", "verifier-xyz"))
-    asyncio.run(pkce_store.consume_state(state))
-    assert asyncio.run(pkce_store.consume_state(state)) is None
-
-
-def test_consume_state_returns_none_for_unknown_state():
-    assert asyncio.run(pkce_store.consume_state("does-not-exist")) is None
+def test_delete_device_flow_state_removes_it():
+    flow_id = asyncio.run(
+        pkce_store.create_device_flow_state({"device_code": "x"}, ttl_seconds=60)
+    )
+    asyncio.run(pkce_store.delete_device_flow_state(flow_id))
+    assert asyncio.run(pkce_store.get_device_flow_state(flow_id)) is None

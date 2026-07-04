@@ -14,7 +14,7 @@ from app.collectors.normalization import normalize_results
 from app.models.audit_job import AuditJobScope, ResourceCollectionStatusRow
 from app.models.cloud_tenant import CloudTenant
 from app.models.network_resource import NetworkResource
-from app.tenant_registry.connection_service import get_connection
+from app.tenant_registry.connection_service import get_connection_by_id
 
 
 def _overall_status(results: list[CollectionResult]) -> str:
@@ -34,7 +34,7 @@ async def _discover_by_provider(
     resource_types: list[str] | None,
 ) -> list[CollectionResult]:
     provider = tenant.provider
-    connection = get_connection(db, tenant.environment, provider)
+    connection = get_connection_by_id(db, tenant.connection_id) if tenant.connection_id else None
     try:
         if provider == "aws":
             return await discover_aws_scope(connection, external_scope_id, region, resource_types)
@@ -50,10 +50,9 @@ async def _discover_by_provider(
                 resource_type="_delegated_auth",
                 status="failed",
                 error_detail=(
-                    f"No active SSO session for the {exc.environment} environment's "
-                    f"{exc.provider.upper()} connection. Connect it via "
-                    f"/connections/{exc.environment}/{exc.provider}/delegated-auth/start "
-                    "and re-run this audit job."
+                    f"No active SSO session for this tenant's {exc.provider.upper()} "
+                    f"connection in the {exc.environment} environment. Reconnect it on "
+                    "the Connections page and re-run this audit job."
                 ),
             )
         ]

@@ -4,11 +4,11 @@ accounts/subscriptions actually exist under it, and diff that against what's
 already registered as a CloudScope - so a new account added on the cloud
 side doesn't require manually typing its ID into NAVIXA.
 
-Reuses the environment's own root-credential SSO session (one per
-environment+provider, see EnvironmentConnection) - if there's no valid
-cached session for the tenant's environment, this raises
-DelegatedAuthRequiredError just like a Discover job would, so the same
-popup-login flow applies here too.
+Reuses the specific named EnvironmentConnection the tenant was
+discovered/created with (tenant.connection_id) - if there's no valid
+cached session for that connection, this raises DelegatedAuthRequiredError
+just like a Discover job would, so the same popup-login flow applies here
+too.
 """
 
 from dataclasses import dataclass
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models.cloud_tenant import CloudTenant
-from app.tenant_registry.connection_service import get_connection
+from app.tenant_registry.connection_service import get_connection_by_id
 from app.tenant_registry.service import list_scopes
 
 
@@ -36,7 +36,7 @@ class AvailableAccount:
 async def discover_available_accounts(
     tenant: CloudTenant, db: Session
 ) -> list[AvailableAccount]:
-    connection = get_connection(db, tenant.environment, tenant.provider)
+    connection = get_connection_by_id(db, tenant.connection_id) if tenant.connection_id else None
 
     if tenant.provider == "aws":
         candidates = await _discover_aws_accounts(connection)

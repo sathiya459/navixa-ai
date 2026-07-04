@@ -26,14 +26,17 @@ export interface Tenant {
   external_tenant_id: string;
   region_info: Record<string, unknown> | null;
   auth_mode: CloudAuthMode;
+  connection_id: string | null;
   app_registration_client_id: string | null;
   app_registration_tenant_id: string | null;
   app_registration_redirect_uri: string | null;
 }
 
 export interface EnvironmentConnection {
+  id: string;
   environment: Environment;
   provider: CloudProvider;
+  name: string;
   sso_login_url: string | null;
   region: string | null;
   connected: boolean;

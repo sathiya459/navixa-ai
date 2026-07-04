@@ -16,6 +16,7 @@ class TenantCreate(BaseModel):
     external_tenant_id: str
     region_info: dict | None = None
     auth_mode: CloudAuthModeLiteral = "delegated"
+    connection_id: uuid.UUID | None = None
     app_registration_client_id: str | None = None
     app_registration_tenant_id: str | None = None
     app_registration_redirect_uri: str | None = None
@@ -38,6 +39,7 @@ class TenantResponse(BaseModel):
     external_tenant_id: str
     region_info: dict | None
     auth_mode: CloudAuthModeLiteral
+    connection_id: uuid.UUID | None
     app_registration_client_id: str | None
     app_registration_tenant_id: str | None
     app_registration_redirect_uri: str | None
@@ -69,8 +71,10 @@ class AvailableAccountResponse(BaseModel):
 
 
 class EnvironmentConnectionResponse(BaseModel):
+    id: uuid.UUID
     environment: EnvironmentLiteral
     provider: CloudProviderLiteral
+    name: str
     sso_login_url: str | None
     region: str | None
     connected: bool
@@ -78,10 +82,18 @@ class EnvironmentConnectionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class EnvironmentConnectionUpsert(BaseModel):
+class ConnectionCreate(BaseModel):
+    name: str
+
+
+class ConnectionUpdate(BaseModel):
     sso_login_url: str | None = None
     region: str | None = None
     extra_config: dict | None = None
+
+
+class ConnectionRename(BaseModel):
+    name: str
 
 
 class AvailableTenantResponse(BaseModel):

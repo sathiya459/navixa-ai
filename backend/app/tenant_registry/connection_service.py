@@ -1,5 +1,6 @@
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.environment_connection import EnvironmentConnection
@@ -7,56 +8,73 @@ from app.models.environment_connection import EnvironmentConnection
 ALL_PROVIDERS = ("aws", "azure", "gcp", "oci")
 
 
-def get_connection(db: Session, environment: str, provider: str) -> EnvironmentConnection | None:
+class DuplicateConnectionNameError(Exception):
+    pass
+
+
+def get_connection_by_id(db: Session, connection_id: uuid.UUID) -> EnvironmentConnection | None:
+    return db.get(EnvironmentConnection, connection_id)
+
+
+def list_connections(db: Session, environment: str) -> list[EnvironmentConnection]:
     return (
         db.query(EnvironmentConnection)
-        .filter(
-            EnvironmentConnection.environment == environment,
-            EnvironmentConnection.provider == provider,
-        )
-        .first()
+        .filter(EnvironmentConnection.environment == environment)
+        .order_by(EnvironmentConnection.provider, EnvironmentConnection.name)
+        .all()
     )
 
 
-def get_or_create_connection(
-    db: Session, environment: str, provider: str, created_by: uuid.UUID
+def create_connection(
+    db: Session, environment: str, provider: str, name: str, created_by: uuid.UUID
 ) -> EnvironmentConnection:
-    connection = get_connection(db, environment, provider)
-    if connection is not None:
-        return connection
     connection = EnvironmentConnection(
-        environment=environment, provider=provider, created_by=created_by
+        environment=environment, provider=provider, name=name, created_by=created_by
     )
     db.add(connection)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise DuplicateConnectionNameError(
+            f"A {provider} connection named '{name}' already exists for {environment}."
+        ) from exc
     db.refresh(connection)
     return connection
 
 
-def list_connections(db: Session, environment: str) -> list[EnvironmentConnection]:
-    existing = {c.provider: c for c in db.query(EnvironmentConnection).filter(
-        EnvironmentConnection.environment == environment
-    )}
-    return [existing.get(provider) for provider in ALL_PROVIDERS if provider in existing] + [
-        EnvironmentConnection(environment=environment, provider=provider)
-        for provider in ALL_PROVIDERS
-        if provider not in existing
-    ]
-
-
-def upsert_connection_config(
+def update_connection_config(
     db: Session,
-    environment: str,
-    provider: str,
-    created_by: uuid.UUID,
+    connection_id: uuid.UUID,
     sso_login_url: str | None,
     region: str | None,
     extra_config: dict | None,
-) -> EnvironmentConnection:
-    connection = get_or_create_connection(db, environment, provider, created_by)
+) -> EnvironmentConnection | None:
+    connection = get_connection_by_id(db, connection_id)
+    if connection is None:
+        return None
     connection.sso_login_url = sso_login_url
     connection.region = region
     connection.extra_config = extra_config
     db.commit()
     db.refresh(connection)
     return connection
+
+
+def rename_connection(db: Session, connection_id: uuid.UUID, name: str) -> EnvironmentConnection | None:
+    connection = get_connection_by_id(db, connection_id)
+    if connection is None:
+        return None
+    connection.name = name
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
+def delete_connection(db: Session, connection_id: uuid.UUID) -> bool:
+    connection = get_connection_by_id(db, connection_id)
+    if connection is None:
+        return False
+    db.delete(connection)
+    db.commit()
+    return True

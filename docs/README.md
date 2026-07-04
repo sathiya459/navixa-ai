@@ -7,6 +7,12 @@ NAVIXA AI is an AI-powered multi-cloud network architecture visibility and expos
 - **Backend**: FastAPI 0.115 + Uvicorn, Pydantic v2, SQLAlchemy 2.0 + Alembic (Postgres via psycopg3), Celery 5 + Redis, Neo4j (graph storage), NetworkX (in-memory graph algorithms), cloud SDKs (aioboto3, azure-identity/mgmt, google-cloud-compute, oci), AI SDKs (anthropic, openai, google-generativeai), MSAL (Entra ID SSO), jose/passlib/bcrypt (auth), fpdf2/openpyxl/jinja2 (reports).
 - **Frontend**: Vite 5 + React 18 + TypeScript 5.6, React Router v7, MUI v9 + Emotion, axios, reactflow (topology diagrams). No dedicated state library — React Context + local state.
 
+## Running locally
+
+See [docs/RUNNING.md](RUNNING.md) for how to start/stop the backend, Celery
+worker/beat, and frontend in this dev environment (native processes, no Docker CLI
+available here).
+
 ## Documentation index
 
 ### Backend (`backend/app`)

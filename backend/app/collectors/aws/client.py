@@ -115,7 +115,7 @@ def get_sso_session_dict(connection: EnvironmentConnection) -> dict | None:
     return json.loads(decrypt(connection.delegated_token_cache))
 
 
-def _persist_sso_session(connection: EnvironmentConnection, session: dict) -> None:
+def persist_aws_session(connection: EnvironmentConnection, session: dict) -> None:
     import json
 
     from app.database.session import SessionLocal
@@ -142,7 +142,7 @@ async def _refresh_sso_access_token(connection: EnvironmentConnection, session: 
     session["access_token"] = response["accessToken"]
     session["refresh_token"] = response.get("refreshToken", session["refresh_token"])
     session["access_token_expires_at"] = int(time.time()) + int(response.get("expiresIn", 28800))
-    _persist_sso_session(connection, session)
+    persist_aws_session(connection, session)
     return session
 
 

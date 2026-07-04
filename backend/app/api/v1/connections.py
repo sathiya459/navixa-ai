@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -8,19 +10,35 @@ from app.models.role import ADMIN
 from app.models.user import User
 from app.schemas.tenant import (
     AvailableTenantResponse,
+    ConnectionCreate,
+    ConnectionUpdate,
     EnvironmentConnectionResponse,
-    EnvironmentConnectionUpsert,
     ImportTenantsRequest,
     TenantResponse,
 )
 from app.tenant_registry.azure_import import discover_available_tenants, import_tenants
 from app.tenant_registry.connection_service import (
-    get_connection,
+    DuplicateConnectionNameError,
+    create_connection,
+    delete_connection,
+    get_connection_by_id,
     list_connections,
-    upsert_connection_config,
+    update_connection_config,
 )
 
 router = APIRouter(prefix="/connections", tags=["Connections"])
+
+
+def _to_response(c) -> EnvironmentConnectionResponse:
+    return EnvironmentConnectionResponse(
+        id=c.id,
+        environment=c.environment,
+        provider=c.provider,
+        name=c.name,
+        sso_login_url=c.sso_login_url,
+        region=c.region,
+        connected=bool(c.delegated_token_cache),
+    )
 
 
 @router.get("", response_model=list[EnvironmentConnectionResponse])
@@ -29,48 +47,68 @@ def get_connections(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
 ) -> list[EnvironmentConnectionResponse]:
-    connections = list_connections(db, environment)
-    return [
-        EnvironmentConnectionResponse(
-            environment=c.environment or environment,
-            provider=c.provider,
-            sso_login_url=c.sso_login_url,
-            region=c.region,
-            connected=bool(c.delegated_token_cache),
-        )
-        for c in connections
-    ]
+    return [_to_response(c) for c in list_connections(db, environment)]
 
 
-@router.put("/{environment}/{provider}", response_model=EnvironmentConnectionResponse)
-def upsert_connection(
+@router.post("/{environment}/{provider}", response_model=EnvironmentConnectionResponse)
+def post_connection(
     environment: str,
     provider: str,
-    payload: EnvironmentConnectionUpsert,
+    payload: ConnectionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
 ) -> EnvironmentConnectionResponse:
-    connection = upsert_connection_config(
+    try:
+        connection = create_connection(
+            db, environment, provider, payload.name, created_by=current_user.id
+        )
+    except DuplicateConnectionNameError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _to_response(connection)
+
+
+@router.put("/{environment}/{connection_id}", response_model=EnvironmentConnectionResponse)
+def put_connection(
+    environment: str,
+    connection_id: uuid.UUID,
+    payload: ConnectionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(ADMIN)),
+) -> EnvironmentConnectionResponse:
+    connection = update_connection_config(
         db,
-        environment,
-        provider,
-        created_by=current_user.id,
+        connection_id,
         sso_login_url=payload.sso_login_url,
         region=payload.region,
         extra_config=payload.extra_config,
     )
-    return EnvironmentConnectionResponse(
-        environment=connection.environment,
-        provider=connection.provider,
-        sso_login_url=connection.sso_login_url,
-        region=connection.region,
-        connected=bool(connection.delegated_token_cache),
-    )
+    if connection is None or connection.environment != environment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    return _to_response(connection)
 
 
-def _get_azure_connection_or_404(db: Session, environment: str):
-    connection = get_connection(db, environment, "azure")
-    if connection is None or not connection.delegated_token_cache:
+@router.delete("/{environment}/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_connection_endpoint(
+    environment: str,
+    connection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(ADMIN)),
+) -> None:
+    connection = get_connection_by_id(db, connection_id)
+    if connection is None or connection.environment != environment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    delete_connection(db, connection_id)
+
+
+def _get_connection_or_404(db: Session, environment: str, connection_id: uuid.UUID):
+    connection = get_connection_by_id(db, connection_id)
+    if (
+        connection is None
+        or connection.environment != environment
+        or connection.provider != "azure"
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    if not connection.delegated_token_cache:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=build_delegated_auth_detail(environment, "azure"),
@@ -78,13 +116,17 @@ def _get_azure_connection_or_404(db: Session, environment: str):
     return connection
 
 
-@router.get("/{environment}/azure/available-tenants", response_model=list[AvailableTenantResponse])
+@router.get(
+    "/{environment}/{connection_id}/azure/available-tenants",
+    response_model=list[AvailableTenantResponse],
+)
 async def get_available_tenants(
     environment: str,
+    connection_id: uuid.UUID,
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_role(ADMIN)),
 ) -> list[AvailableTenantResponse]:
-    connection = _get_azure_connection_or_404(db, environment)
+    connection = _get_connection_or_404(db, environment, connection_id)
     try:
         tenants = await discover_available_tenants(connection, db, environment)
     except DelegatedAuthRequiredError as exc:
@@ -100,14 +142,18 @@ async def get_available_tenants(
     ]
 
 
-@router.post("/{environment}/azure/import-tenants", response_model=list[TenantResponse])
+@router.post(
+    "/{environment}/{connection_id}/azure/import-tenants",
+    response_model=list[TenantResponse],
+)
 async def post_import_tenants(
     environment: str,
+    connection_id: uuid.UUID,
     payload: ImportTenantsRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(ADMIN)),
 ) -> list[TenantResponse]:
-    connection = _get_azure_connection_or_404(db, environment)
+    connection = _get_connection_or_404(db, environment, connection_id)
     try:
         created = await import_tenants(
             connection, db, environment, payload.tenant_ids, created_by=current_user.id

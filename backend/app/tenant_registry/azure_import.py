@@ -66,6 +66,7 @@ async def import_tenants(
                 tenant_name=available[tenant_id]["display_name"],
                 external_tenant_id=tenant_id,
                 auth_mode="delegated",
+                connection_id=connection.id,
             ),
             created_by=created_by,
         )

@@ -1,33 +1,22 @@
 def build_delegated_auth_detail(environment: str, provider: str) -> dict:
-    """Structured 409 body any endpoint can return when an environment has
-    no valid cached SSO session.
+    """Structured 409 body any endpoint can return when a connection has no
+    valid cached SSO session.
 
-    AWS's popup+callback flow can be retried transparently: the frontend's
-    axios interceptor (frontend/src/api/client.ts) recognizes `code`,
-    fetches `start_url` (a GET returning {authorize_url}), opens it in a
-    popup, and retries the original request on success.
-
-    Azure's delegated auth is a device-code flow instead (see
-    app/collectors/azure/client.py's docstring for why) - it requires
+    Both AWS and Azure authenticate via the device-code flow (see
+    app/api/v1/delegated_auth.py's module docstring for why) - it requires
     showing the admin a code, which can't be done transparently from an
-    arbitrary failed request. For `provider == "azure"`, `start_url` is
-    omitted; the frontend must surface `message` and point the admin at
-    the Connections page instead of attempting a popup.
+    arbitrary failed request. The frontend must surface `message` and
+    point the admin at the Connections page to complete sign-in there.
     """
-    detail = {
+    return {
         "code": "delegated_auth_required",
         "environment": environment,
         "provider": provider,
-        "message": f"Sign in via SSO to connect the {environment} environment's {provider.upper()} account.",
+        "message": (
+            f"Connect the {environment} environment's {provider.upper()} account from the "
+            "Connections page first (sign-in requires a device code, shown there)."
+        ),
     }
-    if provider != "azure":
-        detail["start_url"] = f"/connections/{environment}/{provider}/delegated-auth/start"
-    else:
-        detail["message"] = (
-            f"Connect the {environment} environment's Azure account from the Connections page "
-            "first (Azure sign-in requires a device code, shown there)."
-        )
-    return detail
 
 
 class DelegatedAuthRequiredError(Exception):
