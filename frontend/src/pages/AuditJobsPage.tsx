@@ -26,6 +26,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlined";
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
@@ -382,6 +383,17 @@ export function AuditJobsPage() {
                       onClick={() => navigate(`/audits/${job.id}/topology`)}
                     >
                       <AccountTreeIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      title="Hub & Spoke Validation"
+                      onClick={() =>
+                        navigate(`/audits/${job.id}/validate`, {
+                          state: { hubIds: job.hub_selection ?? [] },
+                        })
+                      }
+                    >
+                      <FactCheckIcon fontSize="small" />
                     </IconButton>
                     {isAdmin && (
                       <IconButton

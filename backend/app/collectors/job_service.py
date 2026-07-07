@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.audit_job import AuditJob, AuditJobScope
 from app.models.cloud_tenant import CloudTenant
+from app.models.network_resource import NetworkResource
 from app.schemas.discover import AuditJobCreate, AuditJobListItem
 
 
@@ -39,11 +40,12 @@ def list_audit_jobs(db: Session, tenant_id: uuid.UUID | None = None) -> list[Aud
             CloudTenant.tenant_name,
             AuditJob.status,
             AuditJob.created_at,
+            AuditJob.hub_selection,
             func.count(AuditJobScope.id).label("scope_count"),
         )
         .join(CloudTenant, CloudTenant.id == AuditJob.tenant_id)
         .outerjoin(AuditJobScope, AuditJobScope.audit_job_id == AuditJob.id)
-        .group_by(AuditJob.id, CloudTenant.tenant_name)
+        .group_by(AuditJob.id, CloudTenant.tenant_name, AuditJob.hub_selection)
         .order_by(AuditJob.created_at.desc())
     )
     if tenant_id is not None:
@@ -57,6 +59,7 @@ def list_audit_jobs(db: Session, tenant_id: uuid.UUID | None = None) -> list[Aud
             status=row.status,
             created_at=row.created_at,
             scope_count=row.scope_count,
+            hub_selection=(row.hub_selection or {}).get("hub_ids"),
         )
         for row in query.all()
     ]
@@ -65,3 +68,12 @@ def list_audit_jobs(db: Session, tenant_id: uuid.UUID | None = None) -> list[Aud
 def delete_audit_job(db: Session, job: AuditJob) -> None:
     db.delete(job)
     db.commit()
+
+
+def get_job_network_resources(db: Session, audit_job_id: uuid.UUID) -> list[NetworkResource]:
+    return (
+        db.query(NetworkResource)
+        .join(AuditJobScope, NetworkResource.audit_job_scope_id == AuditJobScope.id)
+        .filter(AuditJobScope.audit_job_id == audit_job_id)
+        .all()
+    )

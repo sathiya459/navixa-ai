@@ -13,6 +13,11 @@ See [docs/RUNNING.md](RUNNING.md) for how to start/stop the backend, Celery
 worker/beat, and frontend in this dev environment (native processes, no Docker CLI
 available here).
 
+See [docs/INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the full list of
+required runtimes, backing services (Postgres/Redis/Neo4j), external
+dependencies (AI providers, cloud credentials, SSO), and required
+environment variables.
+
 ## Documentation index
 
 ### Backend (`backend/app`)

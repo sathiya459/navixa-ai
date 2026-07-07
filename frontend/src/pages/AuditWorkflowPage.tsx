@@ -482,10 +482,7 @@ export function AuditWorkflowPage() {
                   >
                     {isLoading ? "Running..." : "Run Validate"}
                   </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => navigate(`/audits/${jobId}/topology`, { state: { hubIds: selectedHubIds } })}
-                  >
+                  <Button variant="outlined" onClick={() => navigate(`/audits/${jobId}/topology`)}>
                     View Topology
                   </Button>
                 </Stack>

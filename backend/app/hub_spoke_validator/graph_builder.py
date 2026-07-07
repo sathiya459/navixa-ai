@@ -4,15 +4,19 @@ input to the Section 13 validation rules; it is deliberately separate
 from the persisted Neo4j graph (navixa_graph) so rules can run entirely
 from data already loaded for the job, without a round-trip to Neo4j.
 
-Edge construction is AWS-shaped (VpcId, GatewayId, Attachments, Routes)
-since AWS is the only provider with a resource attribute schema rich
-enough to derive gateway ownership and routing today; other providers'
-resources still appear as nodes but won't contribute ROUTES_TO/ATTACHED_TO
-edges until their attribute shapes are mapped similarly.
+PEERED_WITH edges are extracted cross-provider (via
+graph_engine/attribute_extraction.py). ATTACHED_TO/ROUTES_TO edge
+construction is still AWS-shaped (VpcId, GatewayId, Attachments, Routes)
+since deriving gateway ownership and routing reliably needs deeper
+provider-specific routing-model heuristics that risk wrong findings in a
+security tool - other providers' resources still appear as nodes but won't
+contribute ROUTES_TO/ATTACHED_TO edges (and therefore no
+hub_bypass_routing findings) until that's tackled separately.
 """
 
 import networkx as nx
 
+from app.graph_engine.attribute_extraction import extract_peering_endpoints
 from app.models.network_resource import NetworkResource
 
 REL_ATTACHED_TO = "ATTACHED_TO"
@@ -58,14 +62,13 @@ def build_network_graph(resources: list[NetworkResource]) -> nx.MultiDiGraph:
                 )
 
     for peering in peerings:
-        requester = (peering.attributes.get("RequesterVpcInfo") or {}).get("VpcId")
-        accepter = (peering.attributes.get("AccepterVpcInfo") or {}).get("VpcId")
-        if requester in networks and accepter in networks and requester != accepter:
+        source_id, target_id = extract_peering_endpoints(peering.provider, peering.attributes)
+        if source_id in networks and target_id in networks and source_id != target_id:
             graph.add_edge(
-                requester, accepter, key=peering.native_id, relation=REL_PEERED_WITH, native_id=peering.native_id
+                source_id, target_id, key=peering.native_id, relation=REL_PEERED_WITH, native_id=peering.native_id
             )
             graph.add_edge(
-                accepter, requester, key=peering.native_id, relation=REL_PEERED_WITH, native_id=peering.native_id
+                target_id, source_id, key=peering.native_id, relation=REL_PEERED_WITH, native_id=peering.native_id
             )
 
     return graph

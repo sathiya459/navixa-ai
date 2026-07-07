@@ -66,16 +66,19 @@ async def generate_insights(
         )
 
     if "topology_explanation" in insight_types:
-        # Summarized from findings rather than a live navixa_graph query,
-        # since that would require a reachable Neo4j instance at request
-        # time; sufficient context for a plain-language explanation without
-        # that dependency.
-        resource_type_counts: dict[str, int] = {}
-        for finding in findings:
-            resource_type_counts[finding.finding_type] = (
-                resource_type_counts.get(finding.finding_type, 0) + 1
-            )
-        summary_text = ", ".join(f"{k}: {v}" for k, v in resource_type_counts.items()) or "no findings"
+        # Summarized from the live navixa_graph (Neo4j) rather than
+        # findings, now that graph_engine is reachable from this process -
+        # gives the model the actual resource/relationship structure
+        # instead of an indirect proxy derived from finding types.
+        from app.ai_engine.topology_builder import summarize_topology_for_ai
+        from app.graph_engine.queries import get_job_topology
+        from app.graph_engine.session import get_driver
+
+        try:
+            topology = get_job_topology(get_driver(), audit_job_id)
+            summary_text = summarize_topology_for_ai(topology.nodes, topology.edges)
+        except Exception:  # noqa: BLE001
+            summary_text = "No topology data available for this job."
         system, user = build_topology_explanation_prompt(summary_text)
         content = await provider.complete(system, user)
         insights.append(

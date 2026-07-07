@@ -9,12 +9,12 @@ from app.hub_spoke_validator.rules import (
 from app.models.network_resource import NetworkResource
 
 
-def _resource(resource_type, native_id, attributes):
+def _resource(resource_type, native_id, attributes, provider="aws"):
     return NetworkResource(
         id=uuid.uuid4(),
         audit_job_scope_id=uuid.uuid4(),
         resource_type=resource_type,
-        provider="aws",
+        provider=provider,
         native_id=native_id,
         attributes=attributes,
     )
@@ -109,3 +109,26 @@ def test_segmentation_violation_does_not_flag_same_environment_peering():
     envs = extract_environment_tags([r for r in resources if r.resource_type == "network"])
     findings = detect_segmentation_violations(graph, envs)
     assert findings == []
+
+
+def test_segmentation_violation_flags_cross_environment_azure_peering():
+    resources = [
+        _resource(
+            "network", "vnet-spoke1-dev", {"Tags": [{"Key": "Environment", "Value": "prod"}]}, provider="azure"
+        ),
+        _resource(
+            "network", "vnet-spoke2-dev", {"Tags": [{"Key": "Environment", "Value": "dev"}]}, provider="azure"
+        ),
+        _resource(
+            "peering_connection",
+            "peer-1",
+            {"vnet_id": "vnet-spoke1-dev", "remoteVirtualNetwork": {"id": "vnet-spoke2-dev"}},
+            provider="azure",
+        ),
+    ]
+    graph = build_network_graph(resources)
+    envs = extract_environment_tags([r for r in resources if r.resource_type == "network"])
+    findings = detect_segmentation_violations(graph, envs)
+
+    assert len(findings) == 1
+    assert findings[0]["finding_type"] == "segmentation_violation"

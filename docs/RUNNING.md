@@ -117,6 +117,12 @@ services, not part of this repo's dev-server lifecycle.
 - **No `docker` CLI in this environment.** `docker/docker-compose.yml` describes
   the intended container topology but isn't usable for local dev here — services
   are started natively as described above instead.
+- **Orphaned `uvicorn --reload` worker processes can silently keep serving
+  stale code.** See "Known operational gotchas" in
+  [docs/INFRASTRUCTURE.md](INFRASTRUCTURE.md) — the actual server process
+  spawned by `--reload` doesn't have `"uvicorn"` in its command line, so a
+  process search/kill filtered on that string can miss a stale instance
+  from an earlier session that's still bound to the port.
 - **Celery does not hot-reload.** The backend API runs with `--reload` (uvicorn
   watches files and restarts itself), but the Celery worker/beat processes do
   not — they keep executing whatever code was loaded at their own startup,

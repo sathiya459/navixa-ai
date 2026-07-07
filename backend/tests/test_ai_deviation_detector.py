@@ -8,12 +8,12 @@ from app.ai_engine.deviation_detector import (
 from app.models.network_resource import NetworkResource
 
 
-def _resource(resource_type, native_id, attributes=None):
+def _resource(resource_type, native_id, attributes=None, provider="aws"):
     return NetworkResource(
         id=uuid.uuid4(),
         audit_job_scope_id=uuid.uuid4(),
         resource_type=resource_type,
-        provider="aws",
+        provider=provider,
         native_id=native_id,
         name=None,
         attributes=attributes or {},
@@ -34,6 +34,32 @@ def test_summarize_includes_open_ingress_flag():
         {"VpcId": "vpc-1", "IpPermissions": [{"IpRanges": [{"CidrIp": "0.0.0.0/0"}]}]},
     )
     summary = summarize_network_for_ai([sg], hub_ids=[])
+    assert "open_ingress_from_internet=True" in summary
+
+
+def test_summarize_includes_azure_peering_endpoints():
+    peering = _resource(
+        "peering_connection",
+        "peer-1",
+        {"vnet_id": "vnet-spoke1-dev", "remoteVirtualNetwork": {"id": "vnet-spoke2-dev"}},
+        provider="azure",
+    )
+    summary = summarize_network_for_ai([peering], hub_ids=[])
+    assert "peer-1: vnet-spoke1-dev <-> vnet-spoke2-dev" in summary
+
+
+def test_summarize_includes_azure_open_ingress_flag():
+    nsg = _resource(
+        "security_group",
+        "nsg-1",
+        {
+            "securityRules": [
+                {"direction": "Inbound", "access": "Allow", "destinationAddressPrefix": "*"}
+            ]
+        },
+        provider="azure",
+    )
+    summary = summarize_network_for_ai([nsg], hub_ids=[])
     assert "open_ingress_from_internet=True" in summary
 
 

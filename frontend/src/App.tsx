@@ -9,9 +9,11 @@ import { SsoCallbackPage } from "./pages/SsoCallbackPage";
 import { DashboardHomePage } from "./pages/DashboardHomePage";
 import { AuditWorkflowPage } from "./pages/AuditWorkflowPage";
 import { TopologyPage } from "./pages/TopologyPage";
+import { ValidationResultsPage } from "./pages/ValidationResultsPage";
 import { TenantsPage } from "./pages/TenantsPage";
 import { AuditJobsPage } from "./pages/AuditJobsPage";
 import { ConnectionsPage } from "./pages/ConnectionsPage";
+import { ReportsPage } from "./pages/ReportsPage";
 
 function App() {
   return (
@@ -26,7 +28,9 @@ function App() {
                 <Route path="/dashboard" element={<DashboardHomePage />} />
                 <Route path="/tenants" element={<TenantsPage />} />
                 <Route path="/audits" element={<AuditJobsPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/audits/:jobId/topology" element={<TopologyPage />} />
+                <Route path="/audits/:jobId/validate" element={<ValidationResultsPage />} />
                 <Route element={<RequireAdmin />}>
                   <Route path="/audits/new" element={<AuditWorkflowPage />} />
                   <Route path="/connections" element={<ConnectionsPage />} />

@@ -12,14 +12,13 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.collectors.discover_service import run_discovery_for_scope
-from app.collectors.job_service import create_audit_job
+from app.collectors.job_service import create_audit_job, get_job_network_resources
 from app.config.rate_limits import MAX_PARALLEL_SCOPES
 from app.config.settings import get_settings
 from app.database.session import SessionLocal
-from app.graph_engine.writer import GraphResourceInput, sync_job_to_graph
+from app.graph_engine.writer import resources_to_graph_inputs, sync_job_to_graph
 from app.models.audit_job import AuditJob, AuditJobScope
 from app.models.cloud_tenant import CloudScope, CloudTenant
-from app.models.network_resource import NetworkResource
 from app.schemas.discover import AuditJobCreate
 from app.watch.service import get_due_schedules, mark_schedule_run
 from app.workers.celery_app import celery_app
@@ -83,7 +82,7 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
         if "success" in statuses or "partial" in statuses:
             audit_job.status = "graphing"
             db.commit()
-            _sync_graph(db, audit_job_id)
+            _sync_graph(db, audit_job_id, audit_job.tenant_id)
 
         if statuses == {"success"}:
             audit_job.status = "completed"
@@ -97,32 +96,19 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
         db.close()
 
 
-def _sync_graph(db: Session, audit_job_id: uuid.UUID) -> None:
+def _sync_graph(db: Session, audit_job_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
     """Mirrors this job's normalized inventory into navixa_graph (Neo4j).
 
     Best-effort: a graph sync failure degrades the job to "partial" rather
     than failing it outright, since the relational data (findings' source
     of truth) is already durably persisted at this point.
     """
-    resources = (
-        db.query(NetworkResource)
-        .join(AuditJobScope, NetworkResource.audit_job_scope_id == AuditJobScope.id)
-        .filter(AuditJobScope.audit_job_id == audit_job_id)
-        .all()
-    )
-    graph_inputs = [
-        GraphResourceInput(
-            id=r.id,
-            resource_type=r.resource_type,
-            provider=r.provider,
-            native_id=r.native_id,
-            name=r.name,
-            attributes=r.attributes,
-        )
-        for r in resources
-    ]
+    resources = get_job_network_resources(db, audit_job_id)
+    graph_inputs = resources_to_graph_inputs(resources)
+    audit_job = db.get(AuditJob, audit_job_id)
+    hub_ids = (audit_job.hub_selection or {}).get("hub_ids", []) if audit_job else []
     try:
-        sync_job_to_graph(graph_inputs, audit_job_id)
+        sync_job_to_graph(graph_inputs, audit_job_id, tenant_id, hub_ids)
     except Exception:  # noqa: BLE001
         pass
 

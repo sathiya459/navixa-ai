@@ -11,6 +11,7 @@
 
 import networkx as nx
 
+from app.graph_engine.attribute_extraction import extract_peering_endpoints
 from app.hub_spoke_validator.graph_builder import REL_ATTACHED_TO, REL_PEERED_WITH, REL_ROUTES_TO
 from app.models.network_resource import NetworkResource
 
@@ -21,10 +22,8 @@ def detect_unauthorized_peering(
     findings = []
 
     for resource in peering_resources:
-        attrs = resource.attributes
-        requester_vpc = attrs.get("RequesterVpcInfo", {}).get("VpcId")
-        accepter_vpc = attrs.get("AccepterVpcInfo", {}).get("VpcId")
-        peered_vpcs = {v for v in (requester_vpc, accepter_vpc) if v}
+        source_id, target_id = extract_peering_endpoints(resource.provider, resource.attributes)
+        peered_vpcs = {v for v in (source_id, target_id) if v}
 
         if peered_vpcs and not peered_vpcs & hub_vpc_ids:
             findings.append(
@@ -34,7 +33,7 @@ def detect_unauthorized_peering(
                     "title": f"Unauthorized VPC peering: {resource.native_id}",
                     "description": (
                         f"VPC peering connection {resource.native_id} connects "
-                        f"{requester_vpc} and {accepter_vpc}, neither of which is a "
+                        f"{source_id} and {target_id}, neither of which is a "
                         "designated Hub VPC. This represents spoke-to-spoke "
                         "connectivity bypassing the Hub-and-Spoke architecture."
                     ),

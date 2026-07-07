@@ -89,6 +89,7 @@ export interface AuditJobListItem {
   status: AuditJobStatus;
   created_at: string;
   scope_count: number;
+  hub_selection: string[] | null;
 }
 
 export interface ResourceStatus {
@@ -147,4 +148,50 @@ export interface Finding {
   affected_resource_ids: string[];
   status: "open" | "acknowledged" | "resolved" | "false_positive";
   created_at: string;
+}
+
+export type InsightType = "root_cause" | "recommendation" | "exec_summary" | "topology_explanation";
+
+export interface AIInsight {
+  id: string;
+  audit_job_id: string;
+  finding_id: string | null;
+  insight_type: InsightType;
+  ai_provider: AIProviderName;
+  content: string;
+  created_at: string;
+}
+
+export interface GraphNode {
+  id: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+}
+
+export interface Topology {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface DiscoveredResource {
+  id: string;
+  provider: CloudProvider;
+  resource_type: string;
+  native_id: string;
+  name: string | null;
+  attributes: Record<string, unknown>;
+  collected_at: string;
+  audit_job_id: string;
+  tenant_id: string;
+  tenant_name: string;
+  scope_id: string;
+  scope_type: ScopeType;
+  scope_display_name: string;
 }

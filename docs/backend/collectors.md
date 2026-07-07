@@ -6,7 +6,7 @@ Per-cloud-provider async collection of raw network inventory, normalized into NA
 
 - `base.py` — `CollectionResult` dataclass shared by all provider collectors, plus `run_collectors_with_progress()`, the shared fan-out helper every orchestrator uses to run its resource-type collectors concurrently and report each one's result as soon as it completes (rather than only after the whole scope finishes).
 - `discover_service.py` — persists per-resource-type collection status as each type completes (not in bulk at the end - see "Progress reporting" below), and exposes `expected_resource_types(provider, resource_types)` for computing "N of M collected" progress.
-- `job_service.py` — creates and manages `AuditJob` records.
+- `job_service.py` — creates and manages `AuditJob` records; `get_job_network_resources()` fetches a job's `NetworkResource` rows and is shared by the Celery Discover task's graph sync and the manual `POST /graph/jobs/{id}/sync` backfill endpoint. `list_audit_jobs()` also surfaces each job's persisted `hub_selection` (set once NAVIXA Validate has run) so the frontend can prefill hub selection without re-asking.
 - `normalization.py` — maps raw per-provider API shapes into the common `NetworkResource` model.
 - `retry.py` — backoff/throttle handling for cloud API calls.
 - `delegated_auth_errors.py` — builds structured 409 responses when a cloud SSO session needs re-auth (popup flow for AWS, device code for Azure).

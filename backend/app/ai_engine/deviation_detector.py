@@ -15,6 +15,12 @@ import re
 from typing import Any
 
 from app.ai_engine.registry import get_provider
+from app.graph_engine.attribute_extraction import (
+    extract_open_ingress,
+    extract_owning_network_id,
+    extract_peering_endpoints,
+    extract_route_targets,
+)
 from app.models.network_resource import NetworkResource
 
 _VALID_SEVERITIES = {"critical", "high", "medium", "low", "informational"}
@@ -56,10 +62,8 @@ def summarize_network_for_ai(resources: list[NetworkResource], hub_ids: list[str
     peerings = [r for r in resources if r.resource_type == "peering_connection"]
     lines.append(f"\nPeering connections ({len(peerings)}):")
     for peering in peerings:
-        attrs = peering.attributes
-        requester = (attrs.get("RequesterVpcInfo") or {}).get("VpcId", "?")
-        accepter = (attrs.get("AccepterVpcInfo") or {}).get("VpcId", "?")
-        lines.append(f"  - {peering.native_id}: {requester} <-> {accepter}")
+        source_id, target_id = extract_peering_endpoints(peering.provider, peering.attributes)
+        lines.append(f"  - {peering.native_id}: {source_id or '?'} <-> {target_id or '?'}")
 
     gateways = [r for r in resources if r.resource_type == "gateway"]
     lines.append(f"\nGateways ({len(gateways)}):")
@@ -70,23 +74,15 @@ def summarize_network_for_ai(resources: list[NetworkResource], hub_ids: list[str
     route_tables = [r for r in resources if r.resource_type == "route_table"]
     lines.append(f"\nRoute tables ({len(route_tables)}):")
     for rt in route_tables:
-        vpc_id = rt.attributes.get("VpcId", "?")
-        targets = [
-            route.get("GatewayId") or route.get("VpcPeeringConnectionId")
-            for route in rt.attributes.get("Routes", []) or []
-            if route.get("GatewayId") or route.get("VpcPeeringConnectionId")
-        ]
+        vpc_id = extract_owning_network_id(rt.provider, rt.attributes) or "?"
+        targets = extract_route_targets(rt.provider, rt.attributes)
         lines.append(f"  - {rt.native_id} (vpc={vpc_id}) routes -> {targets}")
 
     security_groups = [r for r in resources if r.resource_type == "security_group"]
     lines.append(f"\nSecurity groups ({len(security_groups)}):")
     for sg in security_groups:
-        open_ingress = any(
-            ip_range.get("CidrIp") == "0.0.0.0/0"
-            for perm in sg.attributes.get("IpPermissions", []) or []
-            for ip_range in perm.get("IpRanges", []) or []
-        )
-        vpc_id = sg.attributes.get("VpcId", "?")
+        open_ingress = extract_open_ingress(sg.provider, sg.attributes)
+        vpc_id = extract_owning_network_id(sg.provider, sg.attributes) or "?"
         lines.append(
             f"  - {sg.native_id} (vpc={vpc_id}) open_ingress_from_internet={open_ingress}"
         )
