@@ -23,7 +23,7 @@ Docker is available.
 
 | Service | Purpose | Default port(s) | Image (docker-compose) |
 |---|---|---|---|
-| PostgreSQL | Primary datastore — tenants, scopes, audit jobs, network resources, findings, reports, users/roles. Migrated via Alembic (`backend/alembic/`). | 5432 | `postgres:16-alpine` |
+| PostgreSQL | Primary datastore — tenants, scopes, audit jobs, network resources, findings, reports, users/roles. Migrated via Alembic (`backend/alembic/`). In this dev environment it runs on **port 5433**, not the Postgres default 5432 — this machine also has an unrelated PostgreSQL instance bound to 5432, so always check `backend/.env`'s `DATABASE_URL` rather than assuming the standard port. | 5433 (this machine; standard default is 5432) | `postgres:16-alpine` |
 | Redis | Celery broker + result backend (task queue for NAVIXA Discover runs and NAVIXA Watch's scheduled-discovery polling). | 6379 | `redis:7-alpine` |
 | Neo4j | NAVIXA Graph — persisted topology (`navixa_graph`), separate from Postgres's relational inventory. Requires the `apoc` plugin unrestricted (`NEO4J_dbms_security_procedures_unrestricted: apoc.*`). In this dev environment it's managed via **Neo4j Desktop**, not a Windows service — someone has to open the app and start the DBMS manually; there's no CLI/headless start path here. If it's down, Discover jobs still complete (Neo4j sync failures are caught, see `graph_engine/writer.py`) but the Topology page shows empty/failed until a manual re-sync (`POST /graph/jobs/{id}/sync`, or the "Sync Topology to Graph" button). | 7474 (HTTP), 7687 (Bolt) | `neo4j:5-community` |
 

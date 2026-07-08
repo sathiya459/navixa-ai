@@ -12,14 +12,14 @@ services independent of this repo:
 
 | Service | Port | Notes |
 |---|---|---|
-| PostgreSQL | 5432 | native Windows install, not the `postgres_data` docker volume |
+| PostgreSQL (navixa_db) | **5433** | native Windows install (`PostgreSQL/17`, data dir `c:/tools/pgdata`), not the `postgres_data` docker volume. This machine also runs an unrelated PostgreSQL instance on the standard 5432 — don't confuse the two; `backend/.env`'s `DATABASE_URL` is the source of truth for which port the app actually uses. |
 | Redis | 6379 | native Windows install |
-| Neo4j | 7474 (HTTP), 7687 (Bolt) | native Windows install |
+| Neo4j | 7474 (HTTP), 7687 (Bolt) | managed via Neo4j Desktop — no headless/service start path here, see `docs/INFRASTRUCTURE.md` |
 
 Verify they're up before starting the app:
 
 ```powershell
-Get-NetTCPConnection -State Listen -LocalPort 5432,6379,7687
+Get-NetTCPConnection -State Listen -LocalPort 5433,6379,7687
 ```
 
 If any are down, they need to be started via their own Windows service/process —
@@ -103,7 +103,7 @@ Get-CimInstance Win32_Process | Where-Object {
 Stop-Process -Id <pid1>,<pid2>,... -Force
 ```
 
-Do **not** stop the Postgres/Redis/Neo4j processes (5432/6379/7687) unless you
+Do **not** stop the Postgres/Redis/Neo4j processes (5433/6379/7687) unless you
 specifically intend to take those services down — they're shared, standing
 services, not part of this repo's dev-server lifecycle.
 
