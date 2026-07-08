@@ -117,6 +117,19 @@ services, not part of this repo's dev-server lifecycle.
 - **No `docker` CLI in this environment.** `docker/docker-compose.yml` describes
   the intended container topology but isn't usable for local dev here — services
   are started natively as described above instead.
+- **`backend/.env` must actually be found to take effect.** `Settings`
+  (`app/config/settings.py`) now resolves `.env` via an absolute path
+  (`Path(__file__).resolve().parents[2] / ".env"`), so it loads correctly
+  regardless of the process's working directory. Before this fix, a
+  relative `env_file=".env"` meant any launch method that didn't `cd
+  backend` first (an IDE run config, a script invoked from the repo root,
+  etc.) would silently fail to find it and fall back to every field's
+  hardcoded class default — including `database_url` pointing at port 5432
+  with generic `navixa:navixa` credentials instead of the real local
+  Postgres on 5433 — with no error raised. If the app ever appears to be
+  talking to the wrong Postgres port/credentials again, suspect this class
+  of bug first: check `GET /api/v1/...` behavior against `Settings().database_url`
+  printed directly, not just assumed from `.env`'s contents.
 - **Orphaned `uvicorn --reload` worker processes can silently keep serving
   stale code.** See "Known operational gotchas" in
   [docs/INFRASTRUCTURE.md](INFRASTRUCTURE.md) — the actual server process

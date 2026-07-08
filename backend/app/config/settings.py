@@ -1,10 +1,21 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Absolute path to backend/.env - pydantic-settings resolves a relative
+# env_file against the process's current working directory, not this
+# file's location. Any launch method that doesn't `cd backend` first (an
+# IDE run config, a script invoked from the repo root, etc.) would
+# otherwise silently fail to find `.env` and fall back to every field's
+# hardcoded class default - including `database_url` pointing at the
+# wrong Postgres port/credentials - with no error to indicate anything
+# went wrong.
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "NAVIXA AI"
     environment: str = "development"

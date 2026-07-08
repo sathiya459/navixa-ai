@@ -58,6 +58,17 @@ API (e.g. `http://localhost:8000/api/v1`).
 
 ## Known operational gotchas
 
+- **`.env` must actually be found to take effect (fixed, but know the
+  symptom).** `Settings` (`backend/app/config/settings.py`) now loads
+  `.env` via an absolute path, so it works regardless of the launching
+  process's working directory. Before that fix, a relative `env_file`
+  meant launching the app any way that didn't `cd backend` first (IDE run
+  config, a script from the repo root, etc.) silently fell back to every
+  field's hardcoded class default - notably `database_url` pointing at
+  port 5432 with generic `navixa:navixa` credentials instead of the real
+  local Postgres on 5433 - with no error raised. If the app ever seems to
+  be talking to the wrong DB/port again, this class of bug is the first
+  thing to suspect.
 - **Neo4j has no headless start in this environment.** It must be started
   via Neo4j Desktop's UI before Discover/Topology-dependent work; there's no
   service or CLI command to bring it up unattended here.
