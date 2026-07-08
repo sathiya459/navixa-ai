@@ -40,3 +40,7 @@ backend/celerybeat-schedule*
 
 # OS
 .DS_Store
+
+# Local scratch / reference material - not project source
+Test Environment/
+claude error ref/
