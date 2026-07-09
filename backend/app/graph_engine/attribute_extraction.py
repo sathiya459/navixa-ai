@@ -6,9 +6,10 @@ Each cloud provider's collector returns attributes in that provider's native
 API shape (AWS's `RequesterVpcInfo.VpcId`, Azure's `remoteVirtualNetwork.id`,
 etc.) - there is no normalized schema across providers. This module is the
 single place that knows how to read those provider-specific shapes, so
-`graph_engine/writer.py` (Neo4j sync), `hub_spoke_validator/` (rule engine),
-and `ai_engine/deviation_detector.py` (AI summary) all see the same
-extraction logic instead of three separately-maintained, AWS-only copies.
+`graph_engine/topology_service.py` (topology), `hub_spoke_validator/` (rule
+engine), and `ai_engine/deviation_detector.py` (AI summary) all see the
+same extraction logic instead of three separately-maintained, AWS-only
+copies.
 """
 
 from typing import Any

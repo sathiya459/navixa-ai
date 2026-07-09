@@ -28,19 +28,8 @@ class Settings(BaseSettings):
     # PostgreSQL (navixa_db)
     database_url: str = "postgresql+psycopg://navixa:navixa@localhost:5432/navixa_db"
 
-    # Redis (navixa_cache)
+    # Redis (navixa_cache) - Celery broker/result backend only, not app data.
     redis_url: str = "redis://localhost:6379/0"
-
-    # Neo4j (navixa_graph) - wired in Phase 3. Named multi-database support
-    # (i.e. an actual database literally called "navixa_graph") is a Neo4j
-    # Enterprise-only feature; Community Edition only has the single
-    # default database. Defaulting to "neo4j" here so this works out of
-    # the box on Community; set NEO4J_DATABASE=navixa_graph if running
-    # against Enterprise with that database created.
-    neo4j_uri: str = "bolt://localhost:7687"
-    neo4j_user: str = "neo4j"
-    neo4j_password: str = "changeme"
-    neo4j_database: str = "neo4j"
 
     # JWT
     jwt_secret_key: str = "changeme-dev-only"
@@ -155,7 +144,6 @@ class Settings(BaseSettings):
 _SECRET_FIELD_MAP: dict[str, str] = {
     "jwt_secret_key": "navixa-jwt-secret-key",
     "database_url": "navixa-database-url",
-    "neo4j_password": "navixa-neo4j-password",
     "entra_client_secret": "navixa-entra-client-secret",
     "anthropic_api_key": "navixa-anthropic-api-key",
     "openai_api_key": "navixa-openai-api-key",

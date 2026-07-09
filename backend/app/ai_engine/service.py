@@ -66,17 +66,16 @@ async def generate_insights(
         )
 
     if "topology_explanation" in insight_types:
-        # Summarized from the live navixa_graph (Neo4j) rather than
-        # findings, now that graph_engine is reachable from this process -
-        # gives the model the actual resource/relationship structure
-        # instead of an indirect proxy derived from finding types.
+        # Summarized from the resource/relationship structure computed
+        # live from Postgres (app/graph_engine/topology_service.py) rather
+        # than findings, so the model sees the actual topology instead of
+        # an indirect proxy derived from finding types.
         from app.ai_engine.topology_builder import summarize_topology_for_ai
-        from app.graph_engine.queries import get_job_topology
-        from app.graph_engine.session import get_driver
+        from app.graph_engine.topology_service import get_job_topology
 
         try:
-            topology = get_job_topology(get_driver(), audit_job_id)
-            summary_text = summarize_topology_for_ai(topology.nodes, topology.edges)
+            topology = get_job_topology(db, audit_job_id)
+            summary_text = summarize_topology_for_ai(topology["nodes"], topology["edges"])
         except Exception:  # noqa: BLE001
             summary_text = "No topology data available for this job."
         system, user = build_topology_explanation_prompt(summary_text)

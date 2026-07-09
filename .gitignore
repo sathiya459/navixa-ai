@@ -22,10 +22,9 @@ build/
 # Docker
 *.log
 
-# Neo4j / DB volumes
+# DB volumes
 data/
 postgres_data/
-neo4j_data/
 
 # NAVIXA Reports output (Section 17) - generated files, not source
 backend/generated_reports/
@@ -44,3 +43,6 @@ backend/celerybeat-schedule*
 # Local scratch / reference material - not project source
 Test Environment/
 claude error ref/
+
+# Local process manager runtime state
+scripts/.navixa-pids.json

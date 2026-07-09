@@ -26,7 +26,7 @@ import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { useAuth } from "../auth/AuthContext";
-import { getJobTopology, syncJobTopology } from "../api/graph";
+import { getJobTopology } from "../api/graph";
 import { generateInsights, getInsights, listAIProviders } from "../api/insightai";
 import type { AIProviderName, AIProviderStatus, GraphEdge, GraphNode } from "../api/types";
 import { mapGraphToFlow } from "./topology/mapGraphToFlow";
@@ -59,7 +59,6 @@ function TopologyPageInner() {
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [aiProviders, setAiProviders] = useState<AIProviderStatus[]>([]);
@@ -133,21 +132,6 @@ function TopologyPageInner() {
       });
   }, [jobId]);
 
-  async function handleSync() {
-    if (!jobId) return;
-    setIsSyncing(true);
-    setError(null);
-    try {
-      const topology = await syncJobTopology(jobId);
-      setGraphNodes(topology.nodes);
-      setGraphEdges(topology.edges);
-    } catch {
-      setError("Failed to sync topology to the graph.");
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
   async function handleExplain() {
     if (!jobId || !selectedProvider) return;
     setIsExplaining(true);
@@ -174,7 +158,7 @@ function TopologyPageInner() {
         NAVIXA Topology
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Hub-and-spoke diagram served from NAVIXA Graph (Neo4j) for this audit job.
+        Hub-and-spoke diagram computed live from NAVIXA Discover's inventory for this audit job.
       </Typography>
 
       {error && (
@@ -191,26 +175,13 @@ function TopologyPageInner() {
       )}
 
       {!isLoading && nodes.length === 0 && (
-        <Stack spacing={2} sx={{ mb: 2 }}>
-          <Alert severity="info">
-            No graph data found for this job yet. This job may predate NAVIXA Graph sync, or
-            hasn't been synced since its last Discover run.
-          </Alert>
-          {isAdmin && (
-            <Box>
-              <Button variant="contained" onClick={handleSync} disabled={isSyncing}>
-                {isSyncing ? "Syncing..." : "Sync Topology to Graph"}
-              </Button>
-            </Box>
-          )}
-        </Stack>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No network resources found for this job.
+        </Alert>
       )}
 
       {!isLoading && nodes.length > 0 && isAdmin && (
         <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: "center", flexWrap: "wrap" }}>
-          <Button variant="outlined" onClick={handleSync} disabled={isSyncing}>
-            {isSyncing ? "Syncing..." : "Re-sync Topology"}
-          </Button>
           <TextField
             select
             label="AI Provider"

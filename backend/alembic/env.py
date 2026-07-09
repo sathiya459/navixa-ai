@@ -16,8 +16,6 @@ from app.models import network_resource as _network_resource  # noqa: F401
 from app.models import finding as _finding  # noqa: F401
 from app.models import ai_insight as _ai_insight  # noqa: F401
 from app.models import report as _report  # noqa: F401
-from app.models import scheduled_discovery as _scheduled_discovery  # noqa: F401
-from app.models import resource_change as _resource_change  # noqa: F401
 
 config = context.config
 settings = get_settings()

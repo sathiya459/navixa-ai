@@ -19,11 +19,3 @@ class GraphEdge(BaseModel):
 class TopologyResponse(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
-
-
-class SubgraphResponse(BaseModel):
-    nodes: list[GraphNode]
-
-
-class PathResponse(BaseModel):
-    nodes: list[GraphNode]

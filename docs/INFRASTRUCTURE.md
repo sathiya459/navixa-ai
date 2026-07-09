@@ -24,8 +24,9 @@ Docker is available.
 | Service | Purpose | Default port(s) | Image (docker-compose) |
 |---|---|---|---|
 | PostgreSQL | Primary datastore — tenants, scopes, audit jobs, network resources, findings, reports, users/roles. Migrated via Alembic (`backend/alembic/`). In this dev environment it runs on **port 5433**, not the Postgres default 5432 — this machine also has an unrelated PostgreSQL instance bound to 5432, so always check `backend/.env`'s `DATABASE_URL` rather than assuming the standard port. | 5433 (this machine; standard default is 5432) | `postgres:16-alpine` |
-| Redis | Celery broker + result backend (task queue for NAVIXA Discover runs and NAVIXA Watch's scheduled-discovery polling). | 6379 | `redis:7-alpine` |
-| Neo4j | NAVIXA Graph — persisted topology (`navixa_graph`), separate from Postgres's relational inventory. Requires the `apoc` plugin unrestricted (`NEO4J_dbms_security_procedures_unrestricted: apoc.*`). In this dev environment it's managed via **Neo4j Desktop**, not a Windows service — someone has to open the app and start the DBMS manually; there's no CLI/headless start path here. If it's down, Discover jobs still complete (Neo4j sync failures are caught, see `graph_engine/writer.py`) but the Topology page shows empty/failed until a manual re-sync (`POST /graph/jobs/{id}/sync`, or the "Sync Topology to Graph" button). | 7474 (HTTP), 7687 (Bolt) | `neo4j:5-community` |
+| Redis | Celery broker + result backend (task queue for on-demand NAVIXA Discover runs). | 6379 | `redis:7-alpine` |
+
+NAVIXA Graph (topology) has no separate backing service — `graph_engine/topology_service.py` computes it live from Postgres on every request.
 
 ## Application processes
 
@@ -33,10 +34,11 @@ Run by/for this repo, not shared standing services:
 
 | Process | Depends on | Notes |
 |---|---|---|
-| Backend API (`uvicorn app.main:app`) | Postgres, Redis (for enqueuing), Neo4j (soft dependency — degrades gracefully if down) | `--reload` in dev. See the "orphaned reload worker" gotcha below. |
-| Celery worker (`celery -A app.workers.celery_app worker --pool=solo`) | Postgres, Redis, Neo4j, cloud provider credentials | Runs `navixa.run_discovery` (NAVIXA Discover) and `navixa.check_scheduled_discoveries`. `--pool=solo` is required on Windows. **Does not hot-reload** — must be manually restarted after editing `app/collectors/`, `app/workers/`, or `app/tenant_registry/`. |
-| Celery beat (`celery -A app.workers.celery_app beat`) | Redis | Drives NAVIXA Watch's scheduled-discovery polling on a timer. Without it, `ScheduledDiscovery` rows exist but never fire. |
+| Backend API (`uvicorn app.main:app`) | Postgres, Redis (for enqueuing) | `--reload` in dev. See the "orphaned reload worker" gotcha below. |
+| Celery worker (`celery -A app.workers.celery_app worker --pool=solo`) | Postgres, Redis, cloud provider credentials | Runs `navixa.run_discovery` for on-demand NAVIXA Discover jobs. `--pool=solo` is required on Windows. **Does not hot-reload** — must be manually restarted after editing `app/collectors/`, `app/workers/`, or `app/tenant_registry/`. |
 | Frontend (`vite`) | Backend API reachable at `VITE_API_BASE_URL` | Dev server; no separate backing service. |
+
+There is no Celery beat process — NAVIXA Watch (scheduled/recurring discovery) has been removed; all Discover runs are triggered on demand via the API.
 
 ## External/optional dependencies
 
@@ -48,10 +50,10 @@ Run by/for this repo, not shared standing services:
 ## Required environment variables
 
 See `backend/.env.example` for the full annotated list (never commit a real
-`.env`). At minimum for local dev: `DATABASE_URL`, `REDIS_URL`, `NEO4J_URI`/
-`NEO4J_USER`/`NEO4J_PASSWORD`, `JWT_SECRET_KEY`, `CORS_ORIGINS`. Everything
-else (AI provider keys, cloud credentials, Entra SSO, Secret Manager) is
-optional and only gates the specific feature it backs.
+`.env`). At minimum for local dev: `DATABASE_URL`, `REDIS_URL`,
+`JWT_SECRET_KEY`, `CORS_ORIGINS`. Everything else (AI provider keys, cloud
+credentials, Entra SSO, Secret Manager) is optional and only gates the
+specific feature it backs.
 
 Frontend: `frontend/.env` needs `VITE_API_BASE_URL` pointing at the backend
 API (e.g. `http://localhost:8000/api/v1`).
@@ -69,9 +71,6 @@ API (e.g. `http://localhost:8000/api/v1`).
   local Postgres on 5433 - with no error raised. If the app ever seems to
   be talking to the wrong DB/port again, this class of bug is the first
   thing to suspect.
-- **Neo4j has no headless start in this environment.** It must be started
-  via Neo4j Desktop's UI before Discover/Topology-dependent work; there's no
-  service or CLI command to bring it up unattended here.
 - **Orphaned `uvicorn --reload` worker processes.** On Windows, `uvicorn
   --reload`'s actual server process is a `multiprocessing.spawn` child whose
   command line is just `python -c "from multiprocessing.spawn import
@@ -85,8 +84,8 @@ API (e.g. `http://localhost:8000/api/v1`).
   processes by the `spawn_main(parent_pid=...)` pattern too, not just image
   name/command substring.
 - **Celery does not hot-reload** (see table above) — a common source of
-  "my fix didn't work" confusion; always restart worker/beat after touching
-  their code paths.
+  "my fix didn't work" confusion; always restart the worker after touching
+  its code paths.
 - **Port collision with an unrelated project.** This machine also runs
   another project's Vite dev server on 5173; NAVIXA AI's frontend falls back
   to the next free port (5180 as of this writing). Check the actual

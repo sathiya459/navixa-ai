@@ -9,18 +9,12 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
-
 from app.collectors.discover_service import run_discovery_for_scope
-from app.collectors.job_service import create_audit_job, get_job_network_resources
 from app.config.rate_limits import MAX_PARALLEL_SCOPES
 from app.config.settings import get_settings
 from app.database.session import SessionLocal
-from app.graph_engine.writer import resources_to_graph_inputs, sync_job_to_graph
 from app.models.audit_job import AuditJob, AuditJobScope
 from app.models.cloud_tenant import CloudScope, CloudTenant
-from app.schemas.discover import AuditJobCreate
-from app.watch.service import get_due_schedules, mark_schedule_run
 from app.workers.celery_app import celery_app
 
 
@@ -79,11 +73,6 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
 
         statuses = {js.status for js in job_scopes}
 
-        if "success" in statuses or "partial" in statuses:
-            audit_job.status = "graphing"
-            db.commit()
-            _sync_graph(db, audit_job_id, audit_job.tenant_id)
-
         if statuses == {"success"}:
             audit_job.status = "completed"
         elif statuses == {"failed"}:
@@ -92,45 +81,5 @@ async def _run_discovery_async(audit_job_id: uuid.UUID) -> None:
             audit_job.status = "partial"
         audit_job.completed_at = datetime.now(timezone.utc)
         db.commit()
-    finally:
-        db.close()
-
-
-def _sync_graph(db: Session, audit_job_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
-    """Mirrors this job's normalized inventory into navixa_graph (Neo4j).
-
-    Best-effort: a graph sync failure degrades the job to "partial" rather
-    than failing it outright, since the relational data (findings' source
-    of truth) is already durably persisted at this point.
-    """
-    resources = get_job_network_resources(db, audit_job_id)
-    graph_inputs = resources_to_graph_inputs(resources)
-    audit_job = db.get(AuditJob, audit_job_id)
-    hub_ids = (audit_job.hub_selection or {}).get("hub_ids", []) if audit_job else []
-    try:
-        sync_job_to_graph(graph_inputs, audit_job_id, tenant_id, hub_ids)
-    except Exception:  # noqa: BLE001
-        pass
-
-
-@celery_app.task(name="navixa.check_scheduled_discoveries")
-def check_scheduled_discoveries() -> None:
-    """NAVIXA Watch groundwork: fired every 5 minutes by Celery Beat
-    (see celery_app.py). For each due ScheduledDiscovery, enqueues a new
-    discovery job and advances next_run_at - it does not itself compute
-    diffs; run change detection separately via the /watch API once both
-    the new and a prior job have completed.
-    """
-    db = SessionLocal()
-    try:
-        for schedule in get_due_schedules(db):
-            payload = AuditJobCreate(
-                tenant_id=schedule.tenant_id,
-                scope_ids=[uuid.UUID(s) for s in schedule.scope_ids],
-                hub_selection=schedule.hub_selection,
-            )
-            audit_job = create_audit_job(db, payload, initiated_by=schedule.created_by)
-            run_discovery.delay(str(audit_job.id))
-            mark_schedule_run(db, schedule)
     finally:
         db.close()

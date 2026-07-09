@@ -1,8 +1,9 @@
 """Builds an in-memory NetworkX graph from a job's normalized inventory,
 per Section 12 ("NetworkX for in-memory algorithms"). This graph is the
 input to the Section 13 validation rules; it is deliberately separate
-from the persisted Neo4j graph (navixa_graph) so rules can run entirely
-from data already loaded for the job, without a round-trip to Neo4j.
+from `graph_engine/topology_service.py`'s topology (computed for display,
+not validation) so rules can run entirely from data already loaded for
+the job.
 
 PEERED_WITH edges are extracted cross-provider (via
 graph_engine/attribute_extraction.py). ATTACHED_TO/ROUTES_TO edge

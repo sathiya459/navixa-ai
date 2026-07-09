@@ -10,35 +10,46 @@ new port, etc).
 These are **not** started/stopped by app dev workflow — they're long-running local
 services independent of this repo:
 
-| Service | Port | Notes |
-|---|---|---|
-| PostgreSQL (navixa_db) | **5433** | native Windows install (`PostgreSQL/17`, data dir `c:/tools/pgdata`), not the `postgres_data` docker volume. This machine also runs an unrelated PostgreSQL instance on the standard 5432 — don't confuse the two; `backend/.env`'s `DATABASE_URL` is the source of truth for which port the app actually uses. |
-| Redis | 6379 | native Windows install |
-| Neo4j | 7474 (HTTP), 7687 (Bolt) | managed via Neo4j Desktop — no headless/service start path here, see `docs/INFRASTRUCTURE.md` |
+| Service | Port | Windows service name | Notes |
+|---|---|---|---|
+| PostgreSQL (navixa_db) | **5433** | `navixa-postgresql-5433` | native Windows install (`PostgreSQL/17`, data dir `c:/tools/pgdata`), not the `postgres_data` docker volume. This machine also runs an unrelated PostgreSQL instance on the standard 5432 (Windows service `postgresql-x64-17`) — don't confuse the two; `backend/.env`'s `DATABASE_URL` is the source of truth for which port the app actually uses. |
+| Redis | 6379 | `navixa-redis` | native Windows install at `c:/tools/redis`, used only as the Celery broker/result backend |
+
+Both are registered as Windows services with **Automatic** startup type, so they
+come up on their own after a system reboot — no manual start needed in the normal
+case.
 
 Verify they're up before starting the app:
 
 ```powershell
-Get-NetTCPConnection -State Listen -LocalPort 5433,6379,7687
+Get-NetTCPConnection -State Listen -LocalPort 5433,6379
 ```
 
-If any are down, they need to be started via their own Windows service/process —
-that is outside this repo's scope.
+If either is down, start it via its service:
+
+```powershell
+Start-Service navixa-postgresql-5433
+Start-Service navixa-redis
+```
+
+(They were originally set up as ad-hoc processes — `pg_ctl start` /
+`redis-server.exe redis.windows.conf` — then registered as services via
+`pg_ctl register` and `redis-server --service-install` so they'd survive
+reboots.)
 
 ## Config
 
 - Backend env file: `backend/.env` (already present, copied/adapted from
-  `.env.example` — not committed to git). Confirm `DATABASE_URL`, `REDIS_URL`,
-  `NEO4J_URI` point at `localhost` (not the `postgres`/`redis`/`neo4j` docker
-  hostnames used in `.env.example`, since we're not running docker-compose here).
+  `.env.example` — not committed to git). Confirm `DATABASE_URL`/`REDIS_URL`
+  point at `localhost` (not the `postgres`/`redis` docker hostnames used in
+  `.env.example`, since we're not running docker-compose here).
 
 ## Start order
 
-1. Postgres / Redis / Neo4j (prerequisite services above — confirm already running)
+1. Postgres / Redis (prerequisite services above — confirm already running)
 2. Backend API (uvicorn)
 3. Celery worker
-4. Celery beat
-5. Frontend (Vite)
+4. Frontend (Vite)
 
 ### 1. Backend API
 
@@ -60,20 +71,10 @@ cd backend
 ```
 
 - `--pool=solo` is required on Windows (the default prefork pool doesn't work).
-- Handles `navixa.run_discovery` and `navixa.check_scheduled_discoveries` tasks.
+- Handles `navixa.run_discovery`, the on-demand NAVIXA Discover task. There is no
+  Celery beat process — NAVIXA Watch (scheduled/recurring discovery) has been removed.
 
-### 3. Celery beat
-
-```bash
-cd backend
-.venv/Scripts/python.exe -m celery -A app.workers.celery_app beat --loglevel=info \
-  > celery_beat.log 2> celery_beat_err.log &
-```
-
-- Drives NAVIXA Watch's scheduled-discovery polling. Without this, `ScheduledDiscovery`
-  rows are created but never fire (see comment in `docker/docker-compose.yml`).
-
-### 4. Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -103,7 +104,7 @@ Get-CimInstance Win32_Process | Where-Object {
 Stop-Process -Id <pid1>,<pid2>,... -Force
 ```
 
-Do **not** stop the Postgres/Redis/Neo4j processes (5433/6379/7687) unless you
+Do **not** stop the Postgres/Redis processes (5433/6379) unless you
 specifically intend to take those services down — they're shared, standing
 services, not part of this repo's dev-server lifecycle.
 
@@ -137,13 +138,13 @@ services, not part of this repo's dev-server lifecycle.
   process search/kill filtered on that string can miss a stale instance
   from an earlier session that's still bound to the port.
 - **Celery does not hot-reload.** The backend API runs with `--reload` (uvicorn
-  watches files and restarts itself), but the Celery worker/beat processes do
-  not — they keep executing whatever code was loaded at their own startup,
+  watches files and restarts itself), but the Celery worker process does
+  not — it keeps executing whatever code was loaded at its own startup,
   indefinitely. After editing anything under `app/collectors/`, `app/workers/`,
-  or `app/tenant_registry/`, you must manually kill and restart the worker and
-  beat processes (see "Stopping everything" above, filtering to
-  `celery_app`), or NAVIXA Discover jobs will silently keep running the old
-  code with no indication anything is stale. This has caused confusing "my fix
-  didn't work" symptoms more than once — always check the worker's startup
-  banner timestamp in `celery_worker.log` against the mtime of the files you
-  changed before concluding a fix doesn't work.
+  or `app/tenant_registry/`, you must manually kill and restart the worker
+  (see "Stopping everything" above, filtering to `celery_app`), or NAVIXA
+  Discover jobs will silently keep running the old code with no indication
+  anything is stale. This has caused confusing "my fix didn't work" symptoms
+  more than once — always check the worker's startup banner timestamp in
+  `celery_worker.log` against the mtime of the files you changed before
+  concluding a fix doesn't work.

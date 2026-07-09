@@ -17,7 +17,5 @@ from app.models.environment_connection import EnvironmentConnection  # noqa: F40
 from app.models.finding import Finding  # noqa: F401
 from app.models.network_resource import NetworkResource  # noqa: F401
 from app.models.report import Report  # noqa: F401
-from app.models.resource_change import ResourceChange  # noqa: F401
 from app.models.role import Role, UserRole  # noqa: F401
-from app.models.scheduled_discovery import ScheduledDiscovery  # noqa: F401
 from app.models.user import User  # noqa: F401
